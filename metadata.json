@@ -1,0 +1,6 @@
+{
+  "name": "VyaparSetu",
+  "description": "Smart merchant POS, dynamic auto-split UPI QR, phone soundbox, Khata digital ledger & multilingual AI assistant for Indian retail merchants",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

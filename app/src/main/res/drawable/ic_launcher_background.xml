@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Solid Crisp White Background matching official VyaparSetu brand image -->
+    <path
+        android:pathData="M0,0h108v108h-108z"
+        android:fillColor="#FFFFFF" />
+    <!-- Subtle soft ambient ring for depth -->
+    <path
+        android:pathData="M54,20 A34,34 0 1,1 53.99,20 Z"
+        android:strokeWidth="1"
+        android:strokeColor="#EEF2F6"
+        android:fillColor="#00000000" />
+</vector>

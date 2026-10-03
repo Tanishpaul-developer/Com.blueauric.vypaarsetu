@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="72dp"
+    android:viewportWidth="96"
+    android:viewportHeight="72">
+
+    <!-- Right Arch Ribbon (Emerald Green #059669) -->
+    <path
+        android:pathData="M 39,21 C 45,14 55,11 67,11 C 83,11 92,22 93,44 C 93.5,50 89,52 84,52 C 79,52 77,50 76,44 C 75,30 70,23 62,23 C 56,23 50,26 45,32 Z"
+        android:fillColor="#059669" />
+
+    <!-- Left Arch Ribbon (Royal Blue #1D4ED8) -->
+    <path
+        android:pathData="M 27,52 C 21,52 18,50 18.5,44 C 20,27 31,11 48,11 C 52,11 55,12 59,14 C 51,18 44,26 39,35 C 36,42 33,48 32,52 Z"
+        android:fillColor="#1D4ED8" />
+
+    <!-- Dynamic Upward Swoop Arrow (Bright Royal Blue #2563EB) -->
+    <path
+        android:pathData="M 26,52 C 28,42 36,30 47,27 L 46,23 L 57,28 L 50,37 L 49,33 C 40,36 34,44 31,52 Z"
+        android:fillColor="#2563EB" />
+
+    <!-- Center Indian Rupee Symbol (Rich Teal #0D9488) -->
+    <path
+        android:pathData="M 43,30 L 56,30"
+        android:strokeWidth="2.8"
+        android:strokeColor="#0D9488"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M 43,35 L 55,35"
+        android:strokeWidth="2.8"
+        android:strokeColor="#0D9488"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M 48,30 L 48,41 C 52,41 54.5,39 54.5,35.5 C 54.5,32 52,30 48,30"
+        android:strokeWidth="2.8"
+        android:strokeColor="#0D9488"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M 48,40.5 L 54.5,50"
+        android:strokeWidth="2.8"
+        android:strokeColor="#0D9488"
+        android:strokeLineCap="round" />
+</vector>
