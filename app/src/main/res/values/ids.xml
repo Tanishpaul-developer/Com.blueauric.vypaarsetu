@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="ad_container_layout" type="id" />
+    <item name="inmobi_banner_view" type="id" />
+    <item name="startio_banner_view" type="id" />
+</resources>

@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storefront
@@ -382,6 +383,64 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(text = "अभी लॉक करें", fontSize = 12.sp)
                     }
+                }
+
+                // POS Biometric Security Setting
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(SurfaceOutline)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PointOfSale,
+                                contentDescription = null,
+                                tint = CreditEmerald,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "पीओएस बायोमेट्रिक सुरक्षा (Secure POS Access)",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                            )
+                        }
+                        Text(
+                            text = "पीओएस टर्मिनल और काउंटर खोलने पर बायोमेट्रिक या पिन लॉगिन आवश्यक करें",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = TextSecondary,
+                                fontSize = 12.sp
+                            )
+                        )
+                    }
+
+                    Switch(
+                        checked = profile.posBiometricLockEnabled,
+                        onCheckedChange = { targetState ->
+                            viewModel.setPosBiometricLockEnabled(targetState)
+                            val msg = if (targetState) "पीओएस बायोमेट्रिक सुरक्षा सक्रिय (POS Biometrics Enabled)" else "पीओएस बायोमेट्रिक सुरक्षा निष्क्रिय (POS Biometrics Disabled)"
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = CreditEmerald,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = SurfaceLevel1
+                        ),
+                        modifier = Modifier.testTag("pos_biometric_switch")
+                    )
                 }
             }
 

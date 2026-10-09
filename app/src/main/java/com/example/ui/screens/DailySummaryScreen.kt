@@ -1,7 +1,13 @@
 package com.example.ui.screens
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.monetization.AdFallbackManager
+import com.example.monetization.AdPolicyManager
+import com.example.monetization.VyaparStickyBannerAd
+import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -538,9 +544,22 @@ fun DailySummaryScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Bottom Action Button
+                // Bottom Action Button with Interstitial Cooldown Rule
+                val coroutineScope = rememberCoroutineScope()
                 Button(
-                    onClick = onBack,
+                    onClick = {
+                        val activity = context as? Activity
+                        val adPolicy = AdPolicyManager.getInstance(context)
+                        if (activity != null && adPolicy.canShowInterstitial(AdPolicyManager.Workflows.DAILY_SUMMARY_VIEWED)) {
+                            coroutineScope.launch {
+                                AdFallbackManager.showInterstitialWithFallback(activity)
+                                adPolicy.recordInterstitialShown()
+                                onBack()
+                            }
+                        } else {
+                            onBack()
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)
@@ -558,6 +577,11 @@ fun DailySummaryScreen(
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Sticky Bottom Banner Ad (InMobi primary + Start.io fallback)
+                VyaparStickyBannerAd()
             }
         }
 

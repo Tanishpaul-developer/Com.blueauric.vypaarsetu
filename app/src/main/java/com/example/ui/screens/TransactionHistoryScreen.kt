@@ -19,7 +19,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import com.example.monetization.VyaparNativeAdCard
+import com.example.monetization.VyaparStickyBannerAd
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -291,10 +294,15 @@ fun TransactionHistoryScreen(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(filteredList) { txn ->
+                    itemsIndexed(filteredList, key = { _, txn -> txn.id }) { index, txn ->
+                        if (index == 4) {
+                            VyaparNativeAdCard()
+                        }
                         TransactionRowItem(
                             transaction = txn,
                             merchantShopName = merchantProfile.shopName,
@@ -302,9 +310,12 @@ fun TransactionHistoryScreen(
                         )
                     }
                     item {
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
+
+                // Sticky Bottom Banner Ad (InMobi primary + Start.io fallback)
+                VyaparStickyBannerAd()
             }
         }
     }

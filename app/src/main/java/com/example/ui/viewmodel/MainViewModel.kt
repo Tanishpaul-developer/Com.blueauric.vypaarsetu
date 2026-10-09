@@ -152,6 +152,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun lockBiometric() {
         _isBiometricUnlocked.value = false
+        _isPosUnlocked.value = false
+    }
+
+    // POS Biometric Session State (secures merchant access to POS)
+    private val _isPosUnlocked = MutableStateFlow(false)
+    val isPosUnlocked: StateFlow<Boolean> = _isPosUnlocked.asStateFlow()
+
+    fun setPosUnlocked(unlocked: Boolean) {
+        _isPosUnlocked.value = unlocked
+    }
+
+    fun lockPos() {
+        _isPosUnlocked.value = false
+    }
+
+    fun setPosBiometricLockEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPosBiometricLockEnabled(enabled)
+        }
+    }
+
+    fun setMerchantPosPin(pin: String) {
+        viewModelScope.launch {
+            preferencesRepository.setMerchantPosPin(pin)
+        }
     }
 
     fun completeOnboarding(
@@ -470,6 +495,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateProductThreshold(productId: Long, newThreshold: Double) {
+        viewModelScope.launch {
+            val prod = inventoryRepository.getProductById(productId) ?: return@launch
+            val updated = prod.copy(lowStockThreshold = newThreshold)
+            inventoryRepository.updateProduct(updated, merchantProfile.value.upiId)
+        }
+    }
+
+    fun updateInventoryAlertSettings(defaultThreshold: Double, soundEnabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.updateInventoryAlertSettings(defaultThreshold, soundEnabled)
+        }
+    }
+
+    fun testLowStockAnnouncement(productName: String, remainingQty: Double, unit: String) {
+        SoundboxSpeaker.announceLowStock(
+            context = getApplication(),
+            productName = productName,
+            remainingQty = remainingQty,
+            unit = unit,
+            languageCode = merchantProfile.value.languageCode
+        )
+    }
+
     fun syncInventoryWithCloud(onComplete: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
             val success = inventoryRepository.syncAllWithCloud(merchantProfile.value.upiId)
@@ -584,6 +633,80 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Completes POS sale on Khata (Credit/Udhar):
+     * Deducts sold products from inventory, records customer Udhar in ledger,
+     * checks low-stock thresholds, and announces transaction via Soundbox.
+     */
+    fun confirmPosSaleToKhata(customerId: Long, customerName: String) {
+        val cartItems = _posCart.value
+        val totalAmount = _posAmount.value
+        if (totalAmount <= 0) return
+
+        viewModelScope.launch {
+            val merchantUpi = merchantProfile.value.upiId
+            val lang = merchantProfile.value.languageCode
+
+            // 1. Deduct stock for each catalog item in cart
+            val itemDescriptions = mutableListOf<String>()
+            cartItems.forEach { item ->
+                val (updatedProduct, isLowStock) = inventoryRepository.adjustStock(
+                    productId = item.product.id,
+                    delta = -item.quantity,
+                    reason = "Khata Sale to $customerName (${item.quantity} ${item.product.unit})",
+                    merchantUpi = merchantUpi
+                )
+                itemDescriptions.add("${item.product.name} x${item.quantity.toInt()}")
+
+                // Trigger low stock alert if below threshold
+                if (isLowStock && updatedProduct != null) {
+                    SoundboxSpeaker.announceLowStock(
+                        context = getApplication(),
+                        productName = updatedProduct.name,
+                        remainingQty = updatedProduct.stockQuantity,
+                        unit = updatedProduct.unit,
+                        languageCode = lang
+                    )
+                }
+            }
+
+            val fullItemNote = itemDescriptions.joinToString(", ").ifBlank { "POS Counter Khata Sale" }
+
+            // 2. Record Udhar in Customer Khata
+            khataRepository.recordUdhar(customerId, totalAmount, fullItemNote, merchantUpi)
+
+            // 3. Record in overall Transactions ledger
+            transactionRepository.recordTransaction(
+                TransactionEntity(
+                    amount = totalAmount,
+                    payerName = customerName,
+                    upiRef = "KHATA-" + (System.currentTimeMillis() % 1000000),
+                    paymentSource = "Khata (Udhar)",
+                    type = "CREDIT",
+                    status = "PENDING",
+                    note = fullItemNote
+                )
+            )
+
+            // 4. Soundbox announcement for credit sale
+            val text = when (lang.lowercase()) {
+                "hi" -> "₹${totalAmount.toInt()} का उधार दर्ज हुआ, ग्राहक $customerName।"
+                "bn" -> "₹${totalAmount.toInt()} টাকা বাকি নথিভুক্ত, $customerName।"
+                "mr" -> "₹${totalAmount.toInt()} चे उधार नोंदवले गेले, $customerName."
+                "ta" -> "₹${totalAmount.toInt()} கடன் பதிவு செய்யப்பட்டது, $customerName."
+                "te" -> "₹${totalAmount.toInt()} అప్పు నమోదు చేయబడింది, $customerName."
+                "gu" -> "₹${totalAmount.toInt()} નું ઉધાર નોંધાયું, $customerName."
+                "pa" -> "₹${totalAmount.toInt()} ਦਾ ਉਧਾਰ ਦਰਜ ਹੋਇਆ, $customerName।"
+                else -> "${totalAmount.toInt()} rupees credit recorded for customer $customerName."
+            }
+            SoundboxSpeaker.speakText(getApplication(), text, lang)
+
+            // 5. Clear cart
+            _posCart.value = emptyList()
+            setPosAmount(0.0)
+        }
+    }
+
     // --- Khata State & Actions ---
     val allCustomers: StateFlow<List<CustomerEntity>> = khataRepository.allCustomers
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -630,9 +753,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addNewCustomer(
         name: String,
         phone: String,
-        address: String,
-        initialUdhar: Double,
-        itemNote: String,
+        address: String = "",
+        initialUdhar: Double = 0.0,
+        itemNote: String = "",
         isSupplier: Boolean = false
     ) {
         viewModelScope.launch {
@@ -732,6 +855,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun recordCustomerUdhar(customerId: Long, amount: Double, description: String) {
         viewModelScope.launch {
             khataRepository.recordUdhar(customerId, amount, description)
+        }
+    }
+
+    /**
+     * Records Udhar in customer ledger and automatically decrements stock
+     * for any items picked from inventory, triggering low-stock alerts if needed.
+     */
+    fun recordCustomerUdharWithItems(
+        customerId: Long,
+        customerName: String,
+        amount: Double,
+        description: String,
+        selectedProductsWithQty: List<Pair<ProductEntity, Double>>
+    ) {
+        viewModelScope.launch {
+            val merchantUpi = merchantProfile.value.upiId
+            val lang = merchantProfile.value.languageCode
+
+            // 1. Deduct stock for chosen inventory items
+            selectedProductsWithQty.forEach { (prod, qty) ->
+                if (qty > 0) {
+                    val (updatedProduct, isLowStock) = inventoryRepository.adjustStock(
+                        productId = prod.id,
+                        delta = -qty,
+                        reason = "Khata Udhar to $customerName ($qty ${prod.unit})",
+                        merchantUpi = merchantUpi
+                    )
+                    if (isLowStock && updatedProduct != null) {
+                        SoundboxSpeaker.announceLowStock(
+                            context = getApplication(),
+                            productName = updatedProduct.name,
+                            remainingQty = updatedProduct.stockQuantity,
+                            unit = updatedProduct.unit,
+                            languageCode = lang
+                        )
+                    }
+                }
+            }
+
+            // 2. Record Udhar entry in customer ledger
+            khataRepository.recordUdhar(customerId, amount, description, merchantUpi)
+
+            // 3. Record in transactions
+            transactionRepository.recordTransaction(
+                TransactionEntity(
+                    amount = amount,
+                    payerName = customerName,
+                    upiRef = "KHATA-" + (System.currentTimeMillis() % 1000000),
+                    paymentSource = "Khata (Udhar)",
+                    type = "CREDIT",
+                    status = "PENDING",
+                    note = description
+                )
+            )
+
+            // 4. Soundbox announcement
+            val text = when (lang.lowercase()) {
+                "hi" -> "₹${amount.toInt()} का उधार दर्ज हुआ, $customerName।"
+                "bn" -> "₹${amount.toInt()} টাকা বাকি নথিভুক্ত, $customerName।"
+                "mr" -> "₹${amount.toInt()} चे उधार नोंदवले गेले, $customerName."
+                "ta" -> "₹${amount.toInt()} கடன் பதிவு செய்யப்பட்டது, $customerName."
+                "te" -> "₹${amount.toInt()} అప్పు నమోదు చేయబడింది, $customerName."
+                "gu" -> "₹${amount.toInt()} નું ઉધાર નોંધાયું, $customerName."
+                "pa" -> "₹${amount.toInt()} ਦਾ ਉਧਾਰ ਦਰਜ ਹੋਇਆ, $customerName।"
+                else -> "${amount.toInt()} rupees credit recorded for $customerName."
+            }
+            SoundboxSpeaker.speakText(getApplication(), text, lang)
         }
     }
 

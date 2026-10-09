@@ -208,6 +208,26 @@ object SoundboxSpeaker {
         }
     }
 
+    fun stopSpeaking() {
+        try {
+            tts?.stop()
+        } catch (_: Exception) {}
+        _isSpeaking.value = false
+    }
+
+    fun speakText(
+        context: Context,
+        text: String,
+        languageCode: String = "hi",
+        pitch: Float = 1.0f,
+        speechRate: Float = 1.0f,
+        voiceTone: String = "female"
+    ) {
+        init(context) {
+            speak(text, languageCode, pitch, speechRate, voiceTone)
+        }
+    }
+
     private fun speak(
         text: String,
         languageCode: String,

@@ -1,8 +1,10 @@
 package com.example.data.local
 
+import androidx.compose.runtime.Immutable
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+@Immutable
 @Entity(tableName = "transactions")
 data class TransactionEntity(
     @PrimaryKey(autoGenerate = true)
@@ -21,6 +23,7 @@ data class TransactionEntity(
     val syncStatus: String = "PENDING" // "PENDING", "SYNCED"
 )
 
+@Immutable
 @Entity(tableName = "customers")
 data class CustomerEntity(
     @PrimaryKey(autoGenerate = true)
@@ -38,6 +41,7 @@ data class CustomerEntity(
     val syncStatus: String = "PENDING" // "PENDING", "SYNCED"
 )
 
+@Immutable
 @Entity(tableName = "khata_entries")
 data class KhataEntryEntity(
     @PrimaryKey(autoGenerate = true)
@@ -54,6 +58,7 @@ data class KhataEntryEntity(
     val syncStatus: String = "PENDING" // "PENDING", "SYNCED"
 )
 
+@Immutable
 @Entity(tableName = "products")
 data class ProductEntity(
     @PrimaryKey(autoGenerate = true)
@@ -118,6 +123,7 @@ enum class CreditRiskLevel(val label: String, val colorHex: Long, val badgeEmoji
     HIGH_RISK("High Risk", 0xFFEF4444, "🔴")
 }
 
+@Immutable
 data class CustomerTrustScore(
     val customerId: Long,
     val customerName: String,
@@ -130,6 +136,7 @@ data class CustomerTrustScore(
     val daysSinceLastRepayment: Long = 0
 )
 
+@Immutable
 @Entity(tableName = "feedbacks")
 data class FeedbackEntity(
     @PrimaryKey(autoGenerate = true)

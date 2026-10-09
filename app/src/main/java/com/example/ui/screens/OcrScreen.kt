@@ -1,7 +1,17 @@
 package com.example.ui.screens
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.example.monetization.AdFallbackManager
+import com.example.monetization.AdPolicyManager
+import com.example.monetization.RewardedAdGateDialog
+import com.example.monetization.VyaparStickyBannerAd
+import kotlinx.coroutines.launch
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.net.Uri
@@ -83,6 +93,12 @@ fun OcrScreen(viewModel: MainViewModel) {
     val ocrBitmap by viewModel.ocrBitmap.collectAsState()
     val isOcrProcessing by viewModel.isOcrProcessing.collectAsState()
     val ocrResult by viewModel.ocrResult.collectAsState()
+
+    val adPolicy = remember { AdPolicyManager.getInstance(context) }
+    val remainingCredits by adPolicy.creditsState.collectAsState()
+    var showRewardedAdDialog by remember { mutableStateOf(false) }
+    var isAdLoading by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Zero-permission Android Photo Picker contract
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -206,9 +222,14 @@ fun OcrScreen(viewModel: MainViewModel) {
 
                 Button(
                     onClick = {
-                        photoPickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        if (adPolicy.hasFeatureCredits()) {
+                            adPolicy.consumeCredit()
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        } else {
+                            showRewardedAdDialog = true
+                        }
                     },
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
@@ -219,7 +240,7 @@ fun OcrScreen(viewModel: MainViewModel) {
                 ) {
                     Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("गैलरी से चुनें (Select Image)", fontWeight = FontWeight.Bold)
+                    Text("गैलरी से चुनें (Select Image) • $remainingCredits Left", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -425,8 +446,32 @@ fun OcrScreen(viewModel: MainViewModel) {
         }
 
         item {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            VyaparStickyBannerAd()
+            Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    if (showRewardedAdDialog) {
+        RewardedAdGateDialog(
+            featureName = "Scan OCR",
+            isLoading = isAdLoading,
+            onDismiss = { showRewardedAdDialog = false },
+            onWatchAd = {
+                val activity = context as? Activity
+                if (activity != null) {
+                    isAdLoading = true
+                    coroutineScope.launch {
+                        AdFallbackManager.showRewardedWithFallback(activity) {
+                            adPolicy.grantRewardCredits(5)
+                            Toast.makeText(context, "🎉 5 मुफ्त क्रेडिट जोड़े गए!", Toast.LENGTH_SHORT).show()
+                        }
+                        isAdLoading = false
+                        showRewardedAdDialog = false
+                    }
+                }
+            }
+        )
     }
 }
 

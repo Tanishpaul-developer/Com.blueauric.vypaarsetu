@@ -25,10 +25,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import com.example.monetization.VyaparNativeAdCard
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Call
@@ -40,6 +43,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -50,6 +54,7 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.PriorityHigh
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
@@ -57,6 +62,7 @@ import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.SouthWest
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Warning
+import com.example.data.local.ProductEntity
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -137,7 +143,9 @@ fun KhataScreen(
 
     var showAddCustomerSheet by remember { mutableStateOf(showAddCustomerInitially) }
     var recordingJamaForCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
+    var addingUdharForCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
     var jamaAmountText by remember { mutableStateOf("") }
+    val allProducts by viewModel.allProducts.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -566,8 +574,11 @@ fun KhataScreen(
                     }
                 }
 
-                // Customer Cards Feed
-                items(customers) { customer ->
+                // Customer Cards Feed with Native Ad at position 5
+                itemsIndexed(customers, key = { _, customer -> customer.id }) { index, customer ->
+                    if (index == 4) {
+                        VyaparNativeAdCard()
+                    }
                     val trustScore = remember(customer, allKhataEntries) {
                         CreditRiskCalculator.calculateScore(customer, allKhataEntries)
                     }
@@ -595,8 +606,7 @@ fun KhataScreen(
                             Toast.makeText(context, "${customer.name} का उधार पूरा चुकता हुआ! 🎉", Toast.LENGTH_SHORT).show()
                         },
                         onAddMoreUdhar = {
-                            viewModel.recordCustomerUdhar(customer.id, 500.0, "अतिरिक्त राशन उधार")
-                            Toast.makeText(context, "Added ₹500 Udhar to ${customer.name}", Toast.LENGTH_SHORT).show()
+                            addingUdharForCustomer = customer
                         },
                         onGenerateInvoice = {
                             val invoiceDetails = InvoiceDetails(
@@ -705,6 +715,26 @@ fun KhataScreen(
                     viewModel.recordCustomerJama(cust.id, amt, "Jama Payment via UPI/Cash")
                     recordingJamaForCustomer = null
                     Toast.makeText(context, "₹$amt Jama recorded for ${cust.name}", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+
+        // Record Udhar with optional inventory items dialog
+        addingUdharForCustomer?.let { cust ->
+            AddCustomerUdharDialog(
+                customer = cust,
+                availableProducts = allProducts,
+                onDismiss = { addingUdharForCustomer = null },
+                onConfirm = { amount, note, selectedItems ->
+                    viewModel.recordCustomerUdharWithItems(
+                        customerId = cust.id,
+                        customerName = cust.name,
+                        amount = amount,
+                        description = note,
+                        selectedProductsWithQty = selectedItems
+                    )
+                    addingUdharForCustomer = null
+                    Toast.makeText(context, "₹${amount.toInt()} उधार दर्ज हुआ और स्टॉक अपडेट हुआ!", Toast.LENGTH_SHORT).show()
                 }
             )
         }
@@ -1371,6 +1401,272 @@ fun InvoiceSharePrintDialog(
                 Icon(Icons.Default.Print, contentDescription = null, tint = TrustBlue, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("प्रिंटर पर प्रिंट करें (Print via PrintManager)", fontWeight = FontWeight.Bold, color = TrustBlue)
+            }
+        }
+    }
+}
+
+@Composable
+fun AddCustomerUdharDialog(
+    customer: CustomerEntity,
+    availableProducts: List<ProductEntity>,
+    onDismiss: () -> Unit,
+    onConfirm: (amount: Double, note: String, selectedItems: List<Pair<ProductEntity, Double>>) -> Unit
+) {
+    var mode by remember { mutableStateOf("INVENTORY") } // "INVENTORY" or "CUSTOM"
+    var customAmountText by remember { mutableStateOf("") }
+    var customNoteText by remember { mutableStateOf("") }
+    var productSearchQuery by remember { mutableStateOf("") }
+
+    // Map of product ID to quantity selected
+    val selectedItemQtys = remember { androidx.compose.runtime.mutableStateMapOf<Long, Double>() }
+
+    val filteredProducts = remember(availableProducts, productSearchQuery) {
+        if (productSearchQuery.isBlank()) availableProducts
+        else availableProducts.filter {
+            it.name.contains(productSearchQuery, ignoreCase = true) ||
+            it.localizedName.contains(productSearchQuery, ignoreCase = true)
+        }
+    }
+
+    val inventoryTotal = remember(selectedItemQtys.values.toList()) {
+        availableProducts.sumOf { prod ->
+            val qty = selectedItemQtys[prod.id] ?: 0.0
+            prod.price * qty
+        }
+    }
+
+    val finalAmount = if (mode == "INVENTORY") inventoryTotal else (customAmountText.toDoubleOrNull() ?: 0.0)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(SurfaceLevel2)
+                .border(1.dp, SurfaceOutline, RoundedCornerShape(24.dp))
+                .clickable(onClick = {})
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "+ नया उधार दर्ज करें (Give Credit)",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                    )
+                    Text(
+                        text = "${customer.name} • मौजूदा बकाया: ₹${customer.balanceDue.toInt()}",
+                        style = MaterialTheme.typography.labelSmall.copy(color = DebitCoralLight)
+                    )
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                }
+            }
+
+            // Mode Selector: Pick from Stock vs Manual Amount
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(SurfaceLevel3)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (mode == "INVENTORY") TrustBlue else Color.Transparent)
+                        .clickable { mode = "INVENTORY" }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.Inventory2, contentDescription = null, tint = if (mode == "INVENTORY") Color.White else TextMuted, modifier = Modifier.size(16.dp))
+                        Text("स्टॉक से चुनें", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = if (mode == "INVENTORY") Color.White else TextPrimary))
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (mode == "CUSTOM") TrustBlue else Color.Transparent)
+                        .clickable { mode = "CUSTOM" }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("सीधी राशि (Custom)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = if (mode == "CUSTOM") Color.White else TextPrimary))
+                }
+            }
+
+            if (mode == "INVENTORY") {
+                // Search inventory
+                OutlinedTextField(
+                    value = productSearchQuery,
+                    onValueChange = { productSearchQuery = it },
+                    placeholder = { Text("दुकान का सामान खोजें...", color = TextMuted, fontSize = 12.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp)) }
+                )
+
+                // Products list with + / -
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(230.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (filteredProducts.isEmpty()) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) {
+                                Text("कोई सामान नहीं मिला।", style = MaterialTheme.typography.labelSmall.copy(color = TextMuted))
+                            }
+                        }
+                    } else {
+                        items(filteredProducts, key = { it.id }) { prod ->
+                            val currentQty = selectedItemQtys[prod.id] ?: 0.0
+                            val isSelected = currentQty > 0
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isSelected) TrustBlue.copy(alpha = 0.12f) else SurfaceLevel3)
+                                    .border(1.dp, if (isSelected) TrustBlue.copy(alpha = 0.5f) else SurfaceOutline, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = prod.name,
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                                    )
+                                    Text(
+                                        text = "₹${prod.price.toInt()} / ${prod.unit} • स्टॉक: ${prod.stockQuantity.toInt()}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = if (prod.stockQuantity <= prod.lowStockThreshold) DebitCoralLight else CreditEmeraldLight
+                                        )
+                                    )
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (currentQty > 0) {
+                                        IconButton(
+                                            onClick = {
+                                                if (currentQty <= 1.0) selectedItemQtys.remove(prod.id)
+                                                else selectedItemQtys[prod.id] = currentQty - 1.0
+                                            },
+                                            modifier = Modifier.size(28.dp).clip(CircleShape).background(SurfaceLevel2)
+                                        ) {
+                                            Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = DebitCoral, modifier = Modifier.size(16.dp))
+                                        }
+
+                                        Text(
+                                            text = "${currentQty.toInt()}",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            selectedItemQtys[prod.id] = currentQty + 1.0
+                                        },
+                                        modifier = Modifier.size(28.dp).clip(CircleShape).background(CreditEmerald)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = "Increase", tint = Color.Black, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Manual Amount & Note
+                OutlinedTextField(
+                    value = customAmountText,
+                    onValueChange = { customAmountText = it },
+                    label = { Text("उधार राशि (Amount ₹)") },
+                    modifier = Modifier.fillMaxWidth().testTag("udhar_amount_input"),
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    singleLine = true
+                )
+
+                // Quick amount chips
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(200.0, 500.0, 1000.0, 2000.0).forEach { chipAmt ->
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(SurfaceLevel3)
+                                .border(1.dp, SurfaceOutline, CircleShape)
+                                .clickable { customAmountText = chipAmt.toInt().toString() }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("+₹${chipAmt.toInt()}", style = MaterialTheme.typography.labelSmall.copy(color = TrustBlue, fontWeight = FontWeight.Bold))
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = customNoteText,
+                    onValueChange = { customNoteText = it },
+                    label = { Text("सामग्री विवरण (Item Note)") },
+                    placeholder = { Text("उदा. राशन सामान, तेल, आटा...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+            }
+
+            // Confirm Button
+            Button(
+                onClick = {
+                    if (finalAmount > 0) {
+                        val selectedList = if (mode == "INVENTORY") {
+                            availableProducts
+                                .filter { (selectedItemQtys[it.id] ?: 0.0) > 0 }
+                                .map { it to (selectedItemQtys[it.id] ?: 0.0) }
+                        } else emptyList()
+
+                        val note = if (mode == "INVENTORY") {
+                            selectedList.joinToString(", ") { "${it.first.name} x${it.second.toInt()}" }.ifBlank { "स्टॉक सामान उधार" }
+                        } else {
+                            customNoteText.ifBlank { "नया उधार" }
+                        }
+
+                        onConfirm(finalAmount, note, selectedList)
+                    }
+                },
+                enabled = finalAmount > 0,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .testTag("confirm_record_udhar_btn"),
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = DebitCoral, contentColor = Color.White)
+            ) {
+                Text(
+                    text = "₹${finalAmount.toInt()} उधार दर्ज करें ${if (mode == "INVENTORY") "& स्टॉक घटाएं" else ""}",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
             }
         }
     }

@@ -26,14 +26,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.NotificationImportant
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -43,7 +48,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import com.example.data.local.StockMovementEntity
+import java.text.SimpleDateFormat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -90,6 +99,7 @@ fun InventoryScreen(
     val lowStockProducts by viewModel.lowStockProducts.collectAsState()
     val lowStockCount by viewModel.lowStockCount.collectAsState()
     val totalInventoryValue by viewModel.totalInventoryValue.collectAsState()
+    val recentMovements by viewModel.recentStockMovements.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("सभी (All)") }
@@ -98,6 +108,9 @@ fun InventoryScreen(
     var editingProduct by remember { mutableStateOf<ProductEntity?>(null) }
     var restockingProduct by remember { mutableStateOf<ProductEntity?>(null) }
     var deletingProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    var editingThresholdProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    var showAlertSettingsDialog by remember { mutableStateOf(false) }
+    var showStockHistoryDialog by remember { mutableStateOf(false) }
     var isSyncingCloud by remember { mutableStateOf(false) }
 
     val categories = listOf(
@@ -170,41 +183,72 @@ fun InventoryScreen(
                         )
                     }
 
-                    // Cloud Sync Pill
+                    // Action Pills: Stock Movement History, Alert Settings, Cloud Sync
                     Row(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(SurfaceLevel2)
-                            .border(1.dp, SurfaceOutline, CircleShape)
-                            .clickable {
-                                isSyncingCloud = true
-                                viewModel.syncInventoryWithCloud { success ->
-                                    isSyncingCloud = false
-                                    Toast.makeText(
-                                        context,
-                                        if (success) "✓ Firebase Firestore Synced!" else "Cloud sync offline",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                            .testTag("sync_inventory_firebase_btn"),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(
-                            imageVector = if (isSyncingCloud) Icons.Default.CloudSync else Icons.Default.CloudDone,
-                            contentDescription = "Sync",
-                            tint = if (isSyncingCloud) TrustBlue else CreditEmerald,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = if (isSyncingCloud) "Syncing..." else "Firebase Sync",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
+                        // Stock Movement History Pill
+                        Row(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(SurfaceLevel2)
+                                .border(1.dp, SurfaceOutline, CircleShape)
+                                .clickable { showStockHistoryDialog = true }
+                                .padding(horizontal = 9.dp, vertical = 6.dp)
+                                .testTag("stock_history_btn"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.History, contentDescription = "History", tint = TrustBlue, modifier = Modifier.size(15.dp))
+                            Text("Logs", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = TextPrimary))
+                        }
+
+                        // Low-Stock Alert Settings Pill
+                        Row(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(SurfaceLevel2)
+                                .border(1.dp, if (lowStockCount > 0) DebitCoral.copy(alpha = 0.6f) else SurfaceOutline, CircleShape)
+                                .clickable { showAlertSettingsDialog = true }
+                                .padding(horizontal = 9.dp, vertical = 6.dp)
+                                .testTag("inventory_alert_settings_btn"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = "Alerts", tint = if (lowStockCount > 0) DebitCoral else TrustBlue, modifier = Modifier.size(15.dp))
+                            Text("Alerts", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = if (lowStockCount > 0) DebitCoralLight else TextPrimary))
+                        }
+
+                        // Cloud Sync Pill
+                        Row(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(SurfaceLevel2)
+                                .border(1.dp, SurfaceOutline, CircleShape)
+                                .clickable {
+                                    isSyncingCloud = true
+                                    viewModel.syncInventoryWithCloud { success ->
+                                        isSyncingCloud = false
+                                        Toast.makeText(
+                                            context,
+                                            if (success) "✓ Firebase Firestore Synced!" else "Cloud sync offline",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                                .padding(horizontal = 9.dp, vertical = 6.dp)
+                                .testTag("sync_inventory_firebase_btn"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isSyncingCloud) Icons.Default.CloudSync else Icons.Default.CloudDone,
+                                contentDescription = "Sync",
+                                tint = if (isSyncingCloud) TrustBlue else CreditEmerald,
+                                modifier = Modifier.size(15.dp)
                             )
-                        )
+                        }
                     }
                 }
             }
@@ -309,33 +353,55 @@ fun InventoryScreen(
                                 }
                             }
 
-                            // TTS Voice Alert Trigger Button
-                            IconButton(
-                                onClick = {
-                                    val firstLow = lowStockProducts.firstOrNull()
-                                    if (firstLow != null) {
-                                        SoundboxSpeaker.announceLowStock(
-                                            context = context,
-                                            productName = firstLow.name,
-                                            remainingQty = firstLow.stockQuantity,
-                                            unit = firstLow.unit,
-                                            languageCode = profile.languageCode
-                                        )
-                                        Toast.makeText(context, "साउंडबॉक्स चेतावनी बोली गई!", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(DebitCoral.copy(alpha = 0.3f))
-                                    .testTag("tts_low_stock_announcement_btn")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.VolumeUp,
-                                    contentDescription = "Voice Alert",
-                                    tint = DebitCoralLight,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                // Settings button to adjust thresholds
+                                IconButton(
+                                    onClick = { showAlertSettingsDialog = true },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(DebitCoral.copy(alpha = 0.25f))
+                                        .testTag("alert_banner_settings_btn")
+                                ) {
+                                    Icon(
+                                        Icons.Default.Tune,
+                                        contentDescription = "Settings",
+                                        tint = DebitCoralLight,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                // TTS Voice Alert Trigger Button
+                                IconButton(
+                                    onClick = {
+                                        val firstLow = lowStockProducts.firstOrNull()
+                                        if (firstLow != null) {
+                                            SoundboxSpeaker.announceLowStock(
+                                                context = context,
+                                                productName = firstLow.name,
+                                                remainingQty = firstLow.stockQuantity,
+                                                unit = firstLow.unit,
+                                                languageCode = profile.languageCode
+                                            )
+                                            Toast.makeText(context, "साउंडबॉक्स चेतावनी बोली गई!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(DebitCoral.copy(alpha = 0.3f))
+                                        .testTag("tts_low_stock_announcement_btn")
+                                ) {
+                                    Icon(
+                                        Icons.Default.VolumeUp,
+                                        contentDescription = "Voice Alert",
+                                        tint = DebitCoralLight,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -482,7 +548,8 @@ fun InventoryScreen(
                         product = product,
                         onRestock = { restockingProduct = product },
                         onEdit = { editingProduct = product },
-                        onDelete = { deletingProduct = product }
+                        onDelete = { deletingProduct = product },
+                        onEditThreshold = { editingThresholdProduct = product }
                     )
                 }
             }
@@ -614,6 +681,44 @@ fun InventoryScreen(
                 }
             }
         }
+
+        // Quick Adjust Threshold Dialog
+        editingThresholdProduct?.let { prod ->
+            QuickAdjustThresholdDialog(
+                product = prod,
+                onDismiss = { editingThresholdProduct = null },
+                onSave = { newThreshold ->
+                    viewModel.updateProductThreshold(prod.id, newThreshold)
+                    editingThresholdProduct = null
+                    Toast.makeText(context, "${prod.name} की अलर्ट सीमा ${newThreshold.toInt()} ${prod.unit} सेट की गई", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+
+        // Low-Stock Alert Settings & Test Dialog
+        if (showAlertSettingsDialog) {
+            LowStockAlertSettingsDialog(
+                profile = profile,
+                lowStockProducts = lowStockProducts,
+                onDismiss = { showAlertSettingsDialog = false },
+                onSave = { defaultThreshold, soundEnabled ->
+                    viewModel.updateInventoryAlertSettings(defaultThreshold, soundEnabled)
+                    showAlertSettingsDialog = false
+                    Toast.makeText(context, "अलर्ट सेटिंग्स सहेजी गईं!", Toast.LENGTH_SHORT).show()
+                },
+                onTestSound = { name, qty, unit ->
+                    viewModel.testLowStockAnnouncement(name, qty, unit)
+                }
+            )
+        }
+
+        // Recent Stock Movement Logs Dialog
+        if (showStockHistoryDialog) {
+            StockMovementsHistoryDialog(
+                movements = recentMovements,
+                onDismiss = { showStockHistoryDialog = false }
+            )
+        }
     }
 }
 
@@ -622,7 +727,8 @@ fun ProductCatalogItemCard(
     product: ProductEntity,
     onRestock: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEditThreshold: () -> Unit = {}
 ) {
     val isOutOfStock = product.stockQuantity <= 0
     val isLowStock = product.stockQuantity <= product.lowStockThreshold
@@ -742,10 +848,21 @@ fun ProductCatalogItemCard(
                 )
             }
 
-            Text(
-                text = "अलर्ट सीमा: ${product.lowStockThreshold.toInt()} ${product.unit}",
-                style = MaterialTheme.typography.labelSmall.copy(color = TextMuted)
-            )
+            Row(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(SurfaceLevel3)
+                    .clickable(onClick = onEditThreshold)
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(Icons.Default.Tune, contentDescription = null, tint = TrustBlue, modifier = Modifier.size(12.dp))
+                Text(
+                    text = "अलर्ट सीमा: ${product.lowStockThreshold.toInt()} ${product.unit} ✏️",
+                    style = MaterialTheme.typography.labelSmall.copy(color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                )
+            }
         }
 
         // Action Buttons Row: Quick Restock, Edit, Delete
@@ -1013,6 +1130,381 @@ fun RestockStockDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = CreditEmerald, contentColor = Color.Black)
             ) {
                 Text("स्टॉक अपडेट करें (Confirm Stock-In)", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun QuickAdjustThresholdDialog(
+    product: ProductEntity,
+    onDismiss: () -> Unit,
+    onSave: (Double) -> Unit
+) {
+    var thresholdText by remember { mutableStateOf(product.lowStockThreshold.toInt().toString()) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.88f)
+                .clip(RoundedCornerShape(22.dp))
+                .background(SurfaceLevel2)
+                .border(1.dp, SurfaceOutline, RoundedCornerShape(22.dp))
+                .clickable(onClick = {})
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "चेतावनी सीमा बदलें",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                    )
+                    Text(
+                        text = "${product.name} (${product.unit})",
+                        style = MaterialTheme.typography.labelSmall.copy(color = TrustBlue)
+                    )
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                }
+            }
+
+            Text(
+                text = "जब स्टॉक इस संख्या से कम होगा, तो ऐप और साउंडबॉक्स कम स्टॉक की चेतावनी देंगे।",
+                style = MaterialTheme.typography.bodySmall.copy(color = TextMuted)
+            )
+
+            // Preset Chips
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(2.0, 5.0, 10.0, 15.0, 20.0).forEach { preset ->
+                    val isSel = thresholdText == preset.toInt().toString()
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(CircleShape)
+                            .background(if (isSel) TrustBlue else SurfaceLevel3)
+                            .clickable { thresholdText = preset.toInt().toString() }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "${preset.toInt()}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) Color.White else TextPrimary
+                            )
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = thresholdText,
+                onValueChange = { thresholdText = it },
+                label = { Text("कस्टम सीमा संख्या (${product.unit})") },
+                modifier = Modifier.fillMaxWidth().testTag("custom_threshold_input"),
+                shape = RoundedCornerShape(12.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true
+            )
+
+            Button(
+                onClick = {
+                    val t = thresholdText.toDoubleOrNull() ?: 5.0
+                    onSave(t)
+                },
+                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("save_threshold_btn"),
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = TrustBlue, contentColor = Color.White)
+            ) {
+                Text("अलर्ट सीमा सहेजें", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun LowStockAlertSettingsDialog(
+    profile: com.example.data.model.MerchantProfile,
+    lowStockProducts: List<ProductEntity>,
+    onDismiss: () -> Unit,
+    onSave: (defaultThreshold: Double, soundEnabled: Boolean) -> Unit,
+    onTestSound: (name: String, qty: Double, unit: String) -> Unit
+) {
+    var defaultThresholdText by remember { mutableStateOf(profile.defaultLowStockThreshold.toInt().toString()) }
+    var soundEnabled by remember { mutableStateOf(profile.lowStockAlertSoundEnabled) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(SurfaceLevel2)
+                .border(1.dp, SurfaceOutline, RoundedCornerShape(24.dp))
+                .clickable(onClick = {})
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(DebitCoral.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = DebitCoral, modifier = Modifier.size(20.dp))
+                    }
+                    Column {
+                        Text(
+                            text = "कम स्टॉक चेतावनी सेटिंग्स",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                        )
+                        Text(
+                            text = "Soundbox & In-App Alerts",
+                            style = MaterialTheme.typography.labelSmall.copy(color = TextMuted)
+                        )
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                }
+            }
+
+            // Soundbox Voice Toggle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(SurfaceLevel3)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "साउंडबॉक्स वॉइस अलर्ट",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                    )
+                    Text(
+                        text = "बिक्री के बाद स्टॉक सीमा से कम होने पर आवाज़ में चेतावनी",
+                        style = MaterialTheme.typography.labelSmall.copy(color = TextMuted)
+                    )
+                }
+
+                Switch(
+                    checked = soundEnabled,
+                    onCheckedChange = { soundEnabled = it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = CreditEmerald,
+                        uncheckedTrackColor = SurfaceOutline
+                    )
+                )
+            }
+
+            // Default Threshold Setting
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "नए उत्पादों हेतु डिफ़ॉल्ट सीमा (Default Threshold):",
+                    style = MaterialTheme.typography.labelSmall.copy(color = TextMuted, fontWeight = FontWeight.Bold)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(3.0, 5.0, 10.0, 15.0).forEach { preset ->
+                        val isSel = defaultThresholdText == preset.toInt().toString()
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(CircleShape)
+                                .background(if (isSel) TrustBlue else SurfaceLevel3)
+                                .clickable { defaultThresholdText = preset.toInt().toString() }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "${preset.toInt()}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) Color.White else TextPrimary
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Test Voice Alert Button
+            OutlinedButton(
+                onClick = {
+                    val sampleName = lowStockProducts.firstOrNull()?.name ?: "आशीर्वाद आटा"
+                    val sampleUnit = lowStockProducts.firstOrNull()?.unit ?: "kg"
+                    onTestSound(sampleName, 2.0, sampleUnit)
+                },
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+                shape = CircleShape
+            ) {
+                Icon(Icons.Default.VolumeUp, contentDescription = null, tint = TrustBlue, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("🔊 टेस्ट चेतावनी सुनें (Audition Voice Alert)", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+            }
+
+            Button(
+                onClick = {
+                    val defT = defaultThresholdText.toDoubleOrNull() ?: 5.0
+                    onSave(defT, soundEnabled)
+                },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = TrustBlue, contentColor = Color.White)
+            ) {
+                Text("सेटिंग्स सहेजें", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun StockMovementsHistoryDialog(
+    movements: List<StockMovementEntity>,
+    onDismiss: () -> Unit
+) {
+    val dateFormat = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(SurfaceLevel2)
+                .border(1.dp, SurfaceOutline, RoundedCornerShape(24.dp))
+                .clickable(onClick = {})
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(TrustBlue.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = null, tint = TrustBlue, modifier = Modifier.size(20.dp))
+                    }
+                    Column {
+                        Text(
+                            text = "स्टॉक आवाजाही इतिहास (Movement Log)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                        )
+                        Text(
+                            text = "POS, खाता बिक्री व आवक की प्रविष्टियां",
+                            style = MaterialTheme.typography.labelSmall.copy(color = TextMuted)
+                        )
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                }
+            }
+
+            if (movements.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+                    Text("कोई हालिया स्टॉक आवाजाही नहीं मिली।", style = MaterialTheme.typography.bodySmall.copy(color = TextMuted))
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().height(320.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(movements) { mov ->
+                        val isPositive = mov.quantityDelta > 0
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(SurfaceLevel3)
+                                .border(1.dp, SurfaceOutline, RoundedCornerShape(12.dp))
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isPositive) CreditEmerald.copy(alpha = 0.2f) else DebitCoral.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isPositive) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                        contentDescription = null,
+                                        tint = if (isPositive) CreditEmeraldLight else DebitCoralLight,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                Column {
+                                    Text(
+                                        text = mov.productName,
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                                    )
+                                    Text(
+                                        text = mov.reason + " • " + dateFormat.format(java.util.Date(mov.timestamp)),
+                                        style = MaterialTheme.typography.labelSmall.copy(color = TextMuted, fontSize = 10.sp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = (if (isPositive) "+" else "") + "${mov.quantityDelta.toInt()}",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isPositive) CreditEmeraldLight else DebitCoralLight
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = SurfaceLevel3, contentColor = TextPrimary)
+            ) {
+                Text("बंद करें (Close)")
             }
         }
     }

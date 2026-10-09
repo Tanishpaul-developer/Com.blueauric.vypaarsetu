@@ -2,6 +2,7 @@ package com.example.data.preferences
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -44,6 +45,10 @@ class UserPreferencesRepository(private val context: Context) {
         val SOUNDBOX_SPEECH_RATE = floatPreferencesKey("soundbox_speech_rate")
         val SOUNDBOX_VOICE_TONE = stringPreferencesKey("soundbox_voice_tone")
         val SOUNDBOX_PRE_CHIME = booleanPreferencesKey("soundbox_pre_chime")
+        val DEFAULT_LOW_STOCK_THRESHOLD = doublePreferencesKey("default_low_stock_threshold")
+        val LOW_STOCK_ALERT_SOUND_ENABLED = booleanPreferencesKey("low_stock_alert_sound_enabled")
+        val POS_BIOMETRIC_LOCK_ENABLED = booleanPreferencesKey("pos_biometric_lock_enabled")
+        val MERCHANT_POS_PIN = stringPreferencesKey("merchant_pos_pin")
     }
 
     val ledgerStreakFlow: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -91,8 +96,22 @@ class UserPreferencesRepository(private val context: Context) {
             soundboxPitch = preferences[Keys.SOUNDBOX_PITCH] ?: 1.0f,
             soundboxSpeechRate = preferences[Keys.SOUNDBOX_SPEECH_RATE] ?: 1.0f,
             soundboxVoiceTone = preferences[Keys.SOUNDBOX_VOICE_TONE] ?: "female",
-            soundboxPreChime = preferences[Keys.SOUNDBOX_PRE_CHIME] ?: true
+            soundboxPreChime = preferences[Keys.SOUNDBOX_PRE_CHIME] ?: true,
+            defaultLowStockThreshold = preferences[Keys.DEFAULT_LOW_STOCK_THRESHOLD] ?: 5.0,
+            lowStockAlertSoundEnabled = preferences[Keys.LOW_STOCK_ALERT_SOUND_ENABLED] ?: true,
+            posBiometricLockEnabled = preferences[Keys.POS_BIOMETRIC_LOCK_ENABLED] ?: true,
+            merchantPosPin = preferences[Keys.MERCHANT_POS_PIN] ?: "1234"
         )
+    }
+
+    suspend fun updateInventoryAlertSettings(
+        defaultThreshold: Double,
+        soundEnabled: Boolean
+    ) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.DEFAULT_LOW_STOCK_THRESHOLD] = defaultThreshold
+            preferences[Keys.LOW_STOCK_ALERT_SOUND_ENABLED] = soundEnabled
+        }
     }
 
     suspend fun updateSoundboxSettings(
@@ -229,5 +248,17 @@ class UserPreferencesRepository(private val context: Context) {
             }
         }
         return updatedStreak
+    }
+
+    suspend fun setPosBiometricLockEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.POS_BIOMETRIC_LOCK_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setMerchantPosPin(pin: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.MERCHANT_POS_PIN] = pin
+        }
     }
 }

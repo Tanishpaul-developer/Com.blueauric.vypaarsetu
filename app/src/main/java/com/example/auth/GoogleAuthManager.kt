@@ -230,6 +230,42 @@ class GoogleAuthManager(private val context: Context) {
         }
     }
 
+    /**
+     * Signs in using Firebase Email and Password authentication.
+     */
+    suspend fun signInWithEmail(email: String, password: String): GoogleAuthResult {
+        return try {
+            val authResult = auth.signInWithEmailAndPassword(email.trim(), password).await()
+            val user = authResult.user
+            if (user != null) {
+                processAuthenticatedUser(user)
+            } else {
+                GoogleAuthResult.Error("लॉगिन विफल (Login failed)")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Email sign in error: ${e.message}", e)
+            GoogleAuthResult.Error(e.localizedMessage ?: "ईमेल या पासवर्ड अमान्य है (Invalid email or password)")
+        }
+    }
+
+    /**
+     * Creates a new merchant account using Firebase Email and Password authentication.
+     */
+    suspend fun signUpWithEmail(email: String, password: String): GoogleAuthResult {
+        return try {
+            val authResult = auth.createUserWithEmailAndPassword(email.trim(), password).await()
+            val user = authResult.user
+            if (user != null) {
+                GoogleAuthResult.NewMerchant(user, user.displayName ?: "", user.email ?: email.trim())
+            } else {
+                GoogleAuthResult.Error("साइन-अप विफल (Sign up failed)")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Email sign up error: ${e.message}", e)
+            GoogleAuthResult.Error(e.localizedMessage ?: "खाता बनाने में त्रुटि (Error creating account)")
+        }
+    }
+
     private fun getWebClientId(): String {
         return try {
             val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
@@ -239,9 +275,9 @@ class GoogleAuthManager(private val context: Context) {
                     return clientId
                 }
             }
-            ""
+            "572830563245-haoda64dn4k3bd9r4n371s1gql0eub21.apps.googleusercontent.com"
         } catch (e: Exception) {
-            ""
+            "572830563245-haoda64dn4k3bd9r4n371s1gql0eub21.apps.googleusercontent.com"
         }
     }
 

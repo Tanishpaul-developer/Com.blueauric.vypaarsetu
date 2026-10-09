@@ -36,11 +36,15 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAdd
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Print
@@ -62,6 +66,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import com.example.data.local.CustomerEntity
 import com.example.data.local.ProductEntity
 import com.example.ui.viewmodel.PosCartItem
 import androidx.compose.runtime.Composable
@@ -107,7 +112,8 @@ import java.util.Locale
 
 @Composable
 fun PosQrScreen(
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    onLockPos: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val posAmount by viewModel.posAmount.collectAsState()
@@ -115,7 +121,9 @@ fun PosQrScreen(
     val splitBillResult by viewModel.splitBillResult.collectAsState()
     val allProducts by viewModel.allProducts.collectAsState()
     val posCart by viewModel.posCart.collectAsState()
+    val customers by viewModel.allCustomers.collectAsState()
 
+    var showKhataCustomerPicker by remember { mutableStateOf(false) }
     var selectedPosMode by remember { mutableStateOf("CATALOG") } // "CATALOG" or "KEYPAD"
     var catalogSearchQuery by remember { mutableStateOf("") }
     var selectedCatalogCategory by remember { mutableStateOf("सभी (All)") }
@@ -179,22 +187,54 @@ fun PosQrScreen(
                 }
 
                 Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(CreditEmeraldDark.copy(alpha = 0.6f))
-                        .border(1.dp, CreditEmerald.copy(alpha = 0.4f), CircleShape)
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(modifier = Modifier.size(6.dp).background(CreditEmerald, CircleShape))
-                    Text(
-                        text = "UPI 2.0 Ready",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = CreditEmeraldLight,
-                            fontWeight = FontWeight.Bold
+                    // Quick Lock POS Button to re-secure the terminal
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(DebitCoralDark.copy(alpha = 0.5f))
+                            .border(1.dp, DebitCoral.copy(alpha = 0.4f), CircleShape)
+                            .clickable { onLockPos() }
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                            .testTag("pos_quick_lock_btn"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Lock POS",
+                            tint = DebitCoralLight,
+                            modifier = Modifier.size(13.dp)
                         )
-                    )
+                        Text(
+                            text = "Lock",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = DebitCoralLight,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(CreditEmeraldDark.copy(alpha = 0.6f))
+                            .border(1.dp, CreditEmerald.copy(alpha = 0.4f), CircleShape)
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).background(CreditEmerald, CircleShape))
+                        Text(
+                            text = "UPI 2.0 Ready",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = CreditEmeraldLight,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -955,6 +995,20 @@ fun PosQrScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("💵 नकद बिक्री दर्ज करें (Record Cash Sale & Deduct Stock)", fontWeight = FontWeight.Bold)
                     }
+
+                    Button(
+                        onClick = { showKhataCustomerPicker = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("pos_record_khata_sale_btn"),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = TrustBlue, contentColor = Color.White)
+                    ) {
+                        Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("📖 उधार / खाता पर बेचें (Sell on Khata & Deduct Stock)", fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 Row(
@@ -1012,6 +1066,23 @@ fun PosQrScreen(
                 }
             }
         }
+    }
+
+    if (showKhataCustomerPicker) {
+        PosKhataCustomerPickerDialog(
+            customers = customers,
+            totalAmount = posAmount,
+            cartItemCount = posCart.sumOf { it.quantity }.toInt(),
+            onDismiss = { showKhataCustomerPicker = false },
+            onSelectCustomer = { customer ->
+                viewModel.confirmPosSaleToKhata(customer.id, customer.name)
+                showKhataCustomerPicker = false
+                Toast.makeText(context, "✓ ₹${posAmount.toInt()} ${customer.name} के खाते में दर्ज, स्टॉक अपडेट हुआ!", Toast.LENGTH_SHORT).show()
+            },
+            onAddNewCustomer = { name, phone ->
+                viewModel.addNewCustomer(name, phone, initialUdhar = 0.0, itemNote = "POS Customer", isSupplier = false)
+            }
+        )
     }
 }
 
@@ -1293,6 +1364,230 @@ fun SplitQrCard(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = CreditEmeraldLight)
                     ) {
                         Text("Simulate Payment Received", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PosKhataCustomerPickerDialog(
+    customers: List<CustomerEntity>,
+    totalAmount: Double,
+    cartItemCount: Int,
+    onDismiss: () -> Unit,
+    onSelectCustomer: (CustomerEntity) -> Unit,
+    onAddNewCustomer: (name: String, phone: String) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var isAddingNew by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    var newPhone by remember { mutableStateOf("") }
+
+    val filtered = remember(customers, searchQuery) {
+        if (searchQuery.isBlank()) customers
+        else customers.filter { it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery) }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(SurfaceLevel2)
+                .border(1.dp, SurfaceOutline, RoundedCornerShape(24.dp))
+                .clickable(onClick = {})
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(TrustBlue.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.MenuBook, contentDescription = null, tint = TrustBlue, modifier = Modifier.size(20.dp))
+                    }
+                    Column {
+                        Text(
+                            text = "खाता उधार बिक्री (Khata Sale)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                        )
+                        Text(
+                            text = "₹${totalAmount.toInt()} • $cartItemCount आइटम्स स्टॉक से घटेंगे",
+                            style = MaterialTheme.typography.labelSmall.copy(color = CreditEmerald, fontWeight = FontWeight.SemiBold)
+                        )
+                    }
+                }
+
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                }
+            }
+
+            if (!isAddingNew) {
+                // Search box
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("ग्राहक का नाम या मोबाइल नंबर खोजें...", color = TextMuted, fontSize = 13.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted) }
+                )
+
+                // Quick Add Customer button
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isAddingNew = true }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = TrustBlue, modifier = Modifier.size(18.dp))
+                    Text("+ नया ग्राहक जोड़ें (Add New Customer)", style = MaterialTheme.typography.labelMedium.copy(color = TrustBlue, fontWeight = FontWeight.Bold))
+                }
+
+                // Customers List
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(280.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (filtered.isEmpty()) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 30.dp), contentAlignment = Alignment.Center) {
+                                Text("कोई ग्राहक नहीं मिला। नया जोड़ें।", style = MaterialTheme.typography.bodySmall.copy(color = TextMuted))
+                            }
+                        }
+                    } else {
+                        items(filtered) { customer ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(SurfaceLevel3)
+                                    .border(1.dp, SurfaceOutline, RoundedCornerShape(14.dp))
+                                    .clickable { onSelectCustomer(customer) }
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(TrustBlue.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = customer.name.take(1).uppercase(),
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TrustBlue)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = customer.name,
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+                                        )
+                                        Text(
+                                            text = customer.phone,
+                                            style = MaterialTheme.typography.labelSmall.copy(color = TextMuted)
+                                        )
+                                    }
+                                }
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = "बाकी: ₹${customer.balanceDue.toInt()}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = if (customer.balanceDue > 0) DebitCoralLight else CreditEmeraldLight,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    )
+                                    Text(
+                                        text = "दर्ज करें >",
+                                        style = MaterialTheme.typography.labelSmall.copy(color = TrustBlue, fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Inline Add Customer form
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("नया ग्राहक विवरण दर्ज करें", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = TextPrimary))
+
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text("ग्राहक का नाम (Customer Name)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = newPhone,
+                        onValueChange = { newPhone = it },
+                        label = { Text("मोबाइल नंबर (10-digit Phone)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { isAddingNew = false },
+                            modifier = Modifier.weight(1f),
+                            shape = CircleShape
+                        ) {
+                            Text("रद्द करें")
+                        }
+
+                        Button(
+                            onClick = {
+                                if (newName.isNotBlank() && newPhone.length >= 10) {
+                                    onAddNewCustomer(newName, newPhone)
+                                    isAddingNew = false
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = TrustBlue, contentColor = Color.White)
+                        ) {
+                            Text("ग्राहक सहेजें")
+                        }
                     }
                 }
             }

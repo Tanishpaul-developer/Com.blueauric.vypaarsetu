@@ -1,7 +1,9 @@
 package com.example.data.model
 
 import android.graphics.Bitmap
+import androidx.compose.runtime.Immutable
 
+@Immutable
 data class LanguageOption(
     val code: String,
     val scriptChar: String,
@@ -21,6 +23,7 @@ val SupportedLanguages = listOf(
     LanguageOption("mni", "ꯏ", "মৈতৈলোন্", "Manipuri")
 )
 
+@Immutable
 data class MerchantProfile(
     val shopName: String = "",
     val ownerName: String = "",
@@ -45,7 +48,11 @@ data class MerchantProfile(
     val soundboxPitch: Float = 1.0f, // 0.75f (deep) to 1.25f (bright)
     val soundboxSpeechRate: Float = 1.0f, // 0.8f (steady) to 1.3f (brisk)
     val soundboxVoiceTone: String = "female", // "female", "male", "natural"
-    val soundboxPreChime: Boolean = true // Play bell chime before announcement
+    val soundboxPreChime: Boolean = true, // Play bell chime before announcement
+    val defaultLowStockThreshold: Double = 5.0,
+    val lowStockAlertSoundEnabled: Boolean = true,
+    val posBiometricLockEnabled: Boolean = true,
+    val merchantPosPin: String = "1234"
 )
 
 sealed interface UiState<out T> {
@@ -60,6 +67,7 @@ enum class SplitStatus {
     AWAITING_SCAN
 }
 
+@Immutable
 data class SplitPart(
     val index: Int,
     val totalParts: Int,
@@ -72,12 +80,14 @@ data class SplitPart(
     val txnId: String? = null
 )
 
+@Immutable
 data class SplitBillResult(
     val totalAmount: Double,
     val isAutoSplit: Boolean,
     val parts: List<SplitPart>
 )
 
+@Immutable
 data class OcrParsedTransaction(
     val payerName: String,
     val amount: Double,
@@ -88,6 +98,7 @@ data class OcrParsedTransaction(
     val rawText: String = ""
 )
 
+@Immutable
 data class SoundboxNotificationEvent(
     val id: String,
     val appSource: String, // Google Pay, PhonePe, Paytm, BHIM
@@ -97,13 +108,19 @@ data class SoundboxNotificationEvent(
     val announcedText: String = ""
 )
 
+@Immutable
 data class ChatMessage(
     val id: String = java.util.UUID.randomUUID().toString(),
     val text: String,
     val isUser: Boolean,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val category: String = "GENERAL", // "FINANCIAL", "CUSTOMER_SUPPORT", "KHATA_RECOVERY", "GST"
+    val isSpeaking: Boolean = false,
+    val languageCode: String = "hi",
+    val suggestedFollowUps: List<String> = emptyList()
 )
 
+@Immutable
 data class SmartTip(
     val title: String,
     val description: String,

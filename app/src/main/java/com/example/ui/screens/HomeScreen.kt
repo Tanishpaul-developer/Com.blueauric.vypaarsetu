@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.example.monetization.VyaparStickyBannerAd
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -734,7 +735,7 @@ fun HomeScreen(
             }
         } else {
             // Transaction list items
-            items(recentTransactions.take(8)) { txn ->
+            items(recentTransactions.take(8), key = { it.id }) { txn ->
                 TransactionRowItem(
                     txn = txn,
                     onShare = {
@@ -745,7 +746,8 @@ fun HomeScreen(
         }
 
         item {
-            Spacer(modifier = Modifier.height(24.dp))
+            VyaparStickyBannerAd()
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

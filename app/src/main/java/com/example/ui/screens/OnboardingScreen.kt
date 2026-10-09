@@ -36,6 +36,9 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
@@ -48,6 +51,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.ui.res.painterResource
 import com.example.R
 import com.example.util.AppLocalization
@@ -71,6 +75,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import com.example.ui.components.LuxuryCard
+import com.example.ui.components.bounceClick
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -106,6 +114,12 @@ fun OnboardingScreen(
     val s = remember(selectedLang) { AppLocalization.getStrings(selectedLang) }
 
     var isGoogleSigningIn by remember { mutableStateOf(false) }
+    var authEmail by remember { mutableStateOf("") }
+    var authPassword by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    var authTabIsLogin by remember { mutableStateOf(true) }
+    var isEmailSigningIn by remember { mutableStateOf(false) }
+    var emailAuthError by remember { mutableStateOf<String?>(null) }
     var authenticatedEmail by remember { mutableStateOf("") }
     var authenticatedUid by remember { mutableStateOf("") }
     var showProfileSetup by remember { mutableStateOf(false) }
@@ -471,8 +485,201 @@ fun OnboardingScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             HorizontalDivider(modifier = Modifier.weight(1f), color = SurfaceOutline)
-                            Text("या / OR", fontSize = 12.sp, color = TextMuted)
+                            Text("या ईमेल द्वारा (OR with Email)", fontSize = 12.sp, color = TextMuted)
                             HorizontalDivider(modifier = Modifier.weight(1f), color = SurfaceOutline)
+                        }
+
+                        // Email & Password Auth Segmented Switcher
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(SurfaceLevel2)
+                                .border(1.dp, SurfaceOutline, RoundedCornerShape(12.dp))
+                                .padding(4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (authTabIsLogin) TrustBlue else Color.Transparent)
+                                    .clickable {
+                                        authTabIsLogin = true
+                                        emailAuthError = null
+                                    }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "साइन-इन (Sign In)",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (authTabIsLogin) Color.White else TextMuted
+                                    )
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (!authTabIsLogin) CreditEmerald else Color.Transparent)
+                                    .clickable {
+                                        authTabIsLogin = false
+                                        emailAuthError = null
+                                    }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "नया खाता (Register)",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (!authTabIsLogin) Color.White else TextMuted
+                                    )
+                                )
+                            }
+                        }
+
+                        // Email Field
+                        OutlinedTextField(
+                            value = authEmail,
+                            onValueChange = {
+                                authEmail = it
+                                emailAuthError = null
+                            },
+                            label = { Text("ईमेल पता (Email Address)") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Email, contentDescription = null, tint = TrustBlue, modifier = Modifier.size(18.dp))
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("auth_email_input"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = TrustBlue,
+                                unfocusedBorderColor = SurfaceOutline
+                            )
+                        )
+
+                        // Password Field
+                        OutlinedTextField(
+                            value = authPassword,
+                            onValueChange = {
+                                authPassword = it
+                                emailAuthError = null
+                            },
+                            label = { Text("पासवर्ड (Password)") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Lock, contentDescription = null, tint = TrustBlue, modifier = Modifier.size(18.dp))
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                                    Icon(
+                                        imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = "Toggle password",
+                                        tint = TextMuted,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
+                            visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("auth_password_input"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = TrustBlue,
+                                unfocusedBorderColor = SurfaceOutline
+                            )
+                        )
+
+                        // Auth Error Banner
+                        if (emailAuthError != null) {
+                            Text(
+                                text = emailAuthError!!,
+                                color = Color(0xFFEF4444),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        // Email Auth Action Button
+                        Button(
+                            onClick = {
+                                if (authEmail.isBlank() || authPassword.isBlank()) {
+                                    emailAuthError = "कृपया ईमेल और पासवर्ड दर्ज करें (Enter email and password)"
+                                    return@Button
+                                }
+                                if (authPassword.length < 6) {
+                                    emailAuthError = "पासवर्ड कम से कम 6 अक्षरों का होना चाहिए (Password must be 6+ chars)"
+                                    return@Button
+                                }
+
+                                isEmailSigningIn = true
+                                scope.launch {
+                                    val result = if (authTabIsLogin) {
+                                        googleAuthManager.signInWithEmail(authEmail, authPassword)
+                                    } else {
+                                        googleAuthManager.signUpWithEmail(authEmail, authPassword)
+                                    }
+                                    isEmailSigningIn = false
+                                    when (result) {
+                                        is GoogleAuthResult.ExistingMerchant -> {
+                                            onComplete(
+                                                result.profile.shopName,
+                                                result.profile.ownerName,
+                                                result.profile.upiId,
+                                                result.profile.phone,
+                                                result.profile.email,
+                                                result.profile.address,
+                                                result.profile.gstNumber,
+                                                result.profile.logoUri,
+                                                result.profile.businessCategory,
+                                                result.profile.languageCode
+                                            )
+                                        }
+                                        is GoogleAuthResult.NewMerchant -> {
+                                            authenticatedUid = result.user?.uid ?: "merchant_${System.currentTimeMillis()}"
+                                            authenticatedEmail = result.email.ifBlank { authEmail }
+                                            showProfileSetup = true
+                                        }
+                                        is GoogleAuthResult.Error -> {
+                                            emailAuthError = result.message
+                                        }
+                                        is GoogleAuthResult.Cancelled -> {}
+                                    }
+                                }
+                            },
+                            enabled = !isEmailSigningIn,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .bounceClick { }
+                                .testTag("email_auth_submit_btn"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (authTabIsLogin) TrustBlue else CreditEmerald,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            if (isEmailSigningIn) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(22.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.White
+                                )
+                            } else {
+                                Text(
+                                    text = if (authTabIsLogin) "ईमेल से साइन-इन करें (Sign In)" else "नया खाता बनाएं (Create Account)",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
                         }
 
                         // Direct Registration & Store Setup Button
@@ -484,13 +691,13 @@ fun OnboardingScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(52.dp)
+                                .height(48.dp)
                                 .testTag("direct_register_btn"),
-                            shape = RoundedCornerShape(16.dp)
+                            shape = RoundedCornerShape(14.dp)
                         ) {
-                            Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(18.dp), tint = CreditEmerald)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("दुकान विवरण भरें और रजिस्टर करें (Register Store Directly)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextMuted)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("दुकान विवरण सीधे भरें (Skip to Shop Details)", color = TextSecondary, fontSize = 12.sp)
                         }
                     }
                 } else {

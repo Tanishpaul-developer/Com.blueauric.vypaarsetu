@@ -33,6 +33,7 @@ import com.example.ui.screens.KhataScreen
 import com.example.ui.screens.MiniStoreCatalogScreen
 import com.example.ui.screens.OcrScreen
 import com.example.ui.screens.OnboardingScreen
+import com.example.ui.screens.PosLoginScreen
 import com.example.ui.screens.PosQrScreen
 import com.example.ui.screens.PrinterSetupScreen
 import com.example.ui.screens.ReportsAnalyticsScreen
@@ -65,6 +66,7 @@ fun VyaparSetuNavGraph(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
                 appLockManager.onAppBackgrounded()
+                viewModel.lockPos()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -170,7 +172,21 @@ fun VyaparSetuNavGraph(
                         openAddCustomerModal = true
                     }
                 )
-                NavScreen.POS_QR -> PosQrScreen(viewModel = viewModel)
+                NavScreen.POS_QR -> {
+                    val isPosUnlocked by viewModel.isPosUnlocked.collectAsState()
+                    if (profile.posBiometricLockEnabled && !isPosUnlocked) {
+                        PosLoginScreen(
+                            viewModel = viewModel,
+                            onUnlocked = { viewModel.setPosUnlocked(true) },
+                            onBack = { currentScreen = NavScreen.HOME }
+                        )
+                    } else {
+                        PosQrScreen(
+                            viewModel = viewModel,
+                            onLockPos = { viewModel.setPosUnlocked(false) }
+                        )
+                    }
+                }
                 NavScreen.KHATA -> KhataScreen(
                     viewModel = viewModel,
                     showAddCustomerInitially = openAddCustomerModal
