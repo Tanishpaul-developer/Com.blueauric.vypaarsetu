@@ -54,10 +54,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -95,11 +95,11 @@ fun PrinterSetupScreen(
     val scope = rememberCoroutineScope()
     val printerManager = remember { ThermalPrinterManager.getInstance(context) }
 
-    val connectionState by printerManager.connectionState.collectAsState()
-    val connectedDevice by printerManager.connectedDevice.collectAsState()
-    val discoveredDevices by printerManager.discoveredDevices.collectAsState()
-    val statusMessage by printerManager.statusMessage.collectAsState()
-    val merchantProfile by viewModel.merchantProfile.collectAsState()
+    val connectionState by printerManager.connectionState.collectAsStateWithLifecycle()
+    val connectedDevice by printerManager.connectedDevice.collectAsStateWithLifecycle()
+    val discoveredDevices by printerManager.discoveredDevices.collectAsStateWithLifecycle()
+    val statusMessage by printerManager.statusMessage.collectAsStateWithLifecycle()
+    val merchantProfile by viewModel.merchantProfile.collectAsStateWithLifecycle()
 
     var selectedPaperWidth by remember { mutableStateOf(printerManager.currentPaperWidth) }
     var isTestPrinting by remember { mutableStateOf(false) }
@@ -444,7 +444,7 @@ fun PrinterSetupScreen(
                     }
                 }
             } else {
-                items(discoveredDevices) { device ->
+                items(discoveredDevices, key = { it.address }) { device ->
                     val isCurrent = connectedDevice?.address == device.address
                     val isConnectedNow = isCurrent && connectionState == PrinterConnectionState.CONNECTED
 

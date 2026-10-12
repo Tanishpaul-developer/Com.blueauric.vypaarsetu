@@ -62,8 +62,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,17 +107,17 @@ fun HomeScreen(
     onOpenAddCustomer: () -> Unit
 ) {
     val context = LocalContext.current
-    val recentTransactions by viewModel.transactionRepository.recentTransactions.collectAsState(initial = emptyList())
-    val todayCreditTotal by viewModel.transactionRepository.todayCreditTotal.collectAsState(initial = 0.0)
-    val todayUpiTotal by viewModel.transactionRepository.todayUpiTotal.collectAsState(initial = 0.0)
-    val todayCashTotal by viewModel.transactionRepository.todayCashTotal.collectAsState(initial = 0.0)
-    val todayCount by viewModel.transactionRepository.todayTransactionCount.collectAsState(initial = 0)
-    val totalUdhar by viewModel.totalCustomerUdhar.collectAsState()
-    val lowStockCount by viewModel.lowStockCount.collectAsState()
-    val lowStockProducts by viewModel.lowStockProducts.collectAsState()
-    val streakCount by viewModel.ledgerStreak.collectAsState()
-    val smartTip by viewModel.smartTip.collectAsState()
-    val merchantProfile by viewModel.merchantProfile.collectAsState()
+    val recentTransactions by viewModel.transactionRepository.recentTransactions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val todayCreditTotal by viewModel.transactionRepository.todayCreditTotal.collectAsStateWithLifecycle(initialValue = 0.0)
+    val todayUpiTotal by viewModel.transactionRepository.todayUpiTotal.collectAsStateWithLifecycle(initialValue = 0.0)
+    val todayCashTotal by viewModel.transactionRepository.todayCashTotal.collectAsStateWithLifecycle(initialValue = 0.0)
+    val todayCount by viewModel.transactionRepository.todayTransactionCount.collectAsStateWithLifecycle(initialValue = 0)
+    val totalUdhar by viewModel.totalCustomerUdhar.collectAsStateWithLifecycle()
+    val lowStockCount by viewModel.lowStockCount.collectAsStateWithLifecycle()
+    val lowStockProducts by viewModel.lowStockProducts.collectAsStateWithLifecycle()
+    val streakCount by viewModel.ledgerStreak.collectAsStateWithLifecycle()
+    val smartTip by viewModel.smartTip.collectAsStateWithLifecycle()
+    val merchantProfile by viewModel.merchantProfile.collectAsStateWithLifecycle()
     val strings = LocalAppStrings.current
 
     LazyColumn(

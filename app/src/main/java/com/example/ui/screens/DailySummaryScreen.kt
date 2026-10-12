@@ -52,9 +52,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -93,19 +93,19 @@ fun DailySummaryScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val merchantProfile by viewModel.merchantProfile.collectAsState()
-    val todayCreditTotal by viewModel.transactionRepository.todayCreditTotal.collectAsState(initial = 0.0)
-    val todayCashTotal by viewModel.transactionRepository.todayCashTotal.collectAsState(initial = 0.0)
-    val todayUpiTotal by viewModel.transactionRepository.todayUpiTotal.collectAsState(initial = 0.0)
-    val todayCount by viewModel.transactionRepository.todayTransactionCount.collectAsState(initial = 0)
-    val streakCount by viewModel.ledgerStreak.collectAsState()
+    val merchantProfile by viewModel.merchantProfile.collectAsStateWithLifecycle()
+    val todayCreditTotal by viewModel.transactionRepository.todayCreditTotal.collectAsStateWithLifecycle(initialValue = 0.0)
+    val todayCashTotal by viewModel.transactionRepository.todayCashTotal.collectAsStateWithLifecycle(initialValue = 0.0)
+    val todayUpiTotal by viewModel.transactionRepository.todayUpiTotal.collectAsStateWithLifecycle(initialValue = 0.0)
+    val todayCount by viewModel.transactionRepository.todayTransactionCount.collectAsStateWithLifecycle(initialValue = 0)
+    val streakCount by viewModel.ledgerStreak.collectAsStateWithLifecycle()
 
     val total = todayCreditTotal ?: 0.0
     val cash = todayCashTotal ?: 0.0
     val upi = todayUpiTotal ?: 0.0
     val count = todayCount
 
-    val isSpeaking by SoundboxSpeaker.isSpeaking.collectAsState()
+    val isSpeaking by SoundboxSpeaker.isSpeaking.collectAsStateWithLifecycle()
 
     // Animated number counter
     val animatedTotal = remember { Animatable(0f) }

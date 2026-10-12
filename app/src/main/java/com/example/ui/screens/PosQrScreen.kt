@@ -71,8 +71,8 @@ import com.example.data.local.ProductEntity
 import com.example.ui.viewmodel.PosCartItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -116,12 +116,12 @@ fun PosQrScreen(
     onLockPos: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val posAmount by viewModel.posAmount.collectAsState()
-    val autoSplitEnabled by viewModel.autoSplitEnabled.collectAsState()
-    val splitBillResult by viewModel.splitBillResult.collectAsState()
-    val allProducts by viewModel.allProducts.collectAsState()
-    val posCart by viewModel.posCart.collectAsState()
-    val customers by viewModel.allCustomers.collectAsState()
+    val posAmount by viewModel.posAmount.collectAsStateWithLifecycle()
+    val autoSplitEnabled by viewModel.autoSplitEnabled.collectAsStateWithLifecycle()
+    val splitBillResult by viewModel.splitBillResult.collectAsStateWithLifecycle()
+    val allProducts by viewModel.allProducts.collectAsStateWithLifecycle()
+    val posCart by viewModel.posCart.collectAsStateWithLifecycle()
+    val customers by viewModel.allCustomers.collectAsStateWithLifecycle()
 
     var showKhataCustomerPicker by remember { mutableStateOf(false) }
     var selectedPosMode by remember { mutableStateOf("CATALOG") } // "CATALOG" or "KEYPAD"
@@ -488,7 +488,7 @@ fun PosQrScreen(
 
         // Sequential QR Code Cards
         splitBillResult?.let { bill ->
-            items(bill.parts) { part ->
+            items(bill.parts, key = { it.index }) { part ->
                 SplitQrCard(
                     part = part,
                     timerText = formattedTimer,
@@ -722,7 +722,7 @@ fun PosQrScreen(
                     // Category Chips
                     val categories = listOf("सभी (All)", "किराना", "अनाज व दालें", "मसाले", "डेयरी", "पेय व स्नैक्स")
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(categories) { cat ->
+                        items(categories, key = { it }) { cat ->
                             val isSelected = selectedCatalogCategory == cat
                             Box(
                                 modifier = Modifier
@@ -767,7 +767,7 @@ fun PosQrScreen(
                     }
                 }
             } else {
-                items(filteredProducts) { product ->
+                items(filteredProducts, key = { it.id }) { product ->
                     val cartItem = posCart.find { it.product.id == product.id }
                     val isLowStock = product.stockQuantity <= product.lowStockThreshold
 
@@ -1482,7 +1482,7 @@ fun PosKhataCustomerPickerDialog(
                             }
                         }
                     } else {
-                        items(filtered) { customer ->
+                        items(filtered, key = { it.id }) { customer ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

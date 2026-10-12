@@ -83,11 +83,11 @@ import com.example.service.PdfInvoiceService
 import com.example.util.BiometricAuthManager
 import java.io.File
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -123,19 +123,20 @@ import java.util.Locale
 @Composable
 fun KhataScreen(
     viewModel: MainViewModel,
-    showAddCustomerInitially: Boolean = false
+    showAddCustomerInitially: Boolean = false,
+    onAddCustomerHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val merchantProfile by viewModel.merchantProfile.collectAsState()
-    val customers by viewModel.filteredCustomers.collectAsState()
-    val totalCustomerUdhar by viewModel.totalCustomerUdhar.collectAsState()
-    val totalSupplierPayable by viewModel.totalSupplierPayable.collectAsState()
-    val searchQuery by viewModel.khataSearchQuery.collectAsState()
-    val isShowingSuppliers by viewModel.isShowingSuppliers.collectAsState()
-    val khataFilter by viewModel.khataFilter.collectAsState()
-    val isBiometricUnlocked by viewModel.isBiometricUnlocked.collectAsState()
+    val merchantProfile by viewModel.merchantProfile.collectAsStateWithLifecycle()
+    val customers by viewModel.filteredCustomers.collectAsStateWithLifecycle()
+    val totalCustomerUdhar by viewModel.totalCustomerUdhar.collectAsStateWithLifecycle()
+    val totalSupplierPayable by viewModel.totalSupplierPayable.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.khataSearchQuery.collectAsStateWithLifecycle()
+    val isShowingSuppliers by viewModel.isShowingSuppliers.collectAsStateWithLifecycle()
+    val khataFilter by viewModel.khataFilter.collectAsStateWithLifecycle()
+    val isBiometricUnlocked by viewModel.isBiometricUnlocked.collectAsStateWithLifecycle()
     val isLocked = merchantProfile.biometricLockEnabled && !isBiometricUnlocked
-    val allKhataEntries by viewModel.khataRepository.allKhataEntries.collectAsState(initial = emptyList())
+    val allKhataEntries by viewModel.khataRepository.allKhataEntries.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val pdfInvoiceService = remember { PdfInvoiceService(context) }
     var selectedInvoicePdf by remember { mutableStateOf<Triple<CustomerEntity, File, InvoiceDetails>?>(null) }
@@ -145,7 +146,7 @@ fun KhataScreen(
     var recordingJamaForCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
     var addingUdharForCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
     var jamaAmountText by remember { mutableStateOf("") }
-    val allProducts by viewModel.allProducts.collectAsState()
+    val allProducts by viewModel.allProducts.collectAsStateWithLifecycle()
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -552,7 +553,7 @@ fun KhataScreen(
                             "OVERDUE" to "तगादा बाकी (Overdue: 8)",
                             "TODAY" to "आज की देनदारी (Today)"
                         )
-                        items(chips) { (code, label) ->
+                        items(chips, key = { it.first }) { (code, label) ->
                             val isSelected = khataFilter == code
                             Box(
                                 modifier = Modifier
@@ -694,10 +695,14 @@ fun KhataScreen(
         // Add Customer Modal Sheet
         if (showAddCustomerSheet) {
             AddCustomerDialog(
-                onDismiss = { showAddCustomerSheet = false },
+                onDismiss = {
+                    showAddCustomerSheet = false
+                    onAddCustomerHandled()
+                },
                 onSave = { name, phone, address, amount, note ->
                     viewModel.addNewCustomer(name, phone, address, amount, note)
                     showAddCustomerSheet = false
+                    onAddCustomerHandled()
                     Toast.makeText(context, "Added $name to Khata", Toast.LENGTH_SHORT).show()
                 }
             )

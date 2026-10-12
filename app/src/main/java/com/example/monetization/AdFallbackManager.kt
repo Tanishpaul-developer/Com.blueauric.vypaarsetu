@@ -24,6 +24,7 @@ import com.startapp.sdk.adsbase.StartAppAd
 import com.startapp.sdk.adsbase.adlisteners.AdDisplayListener
 import com.startapp.sdk.adsbase.adlisteners.AdEventListener
 import com.startapp.sdk.adsbase.adlisteners.VideoListener
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -52,80 +53,90 @@ data class UnifiedNativeAd(
 
 /**
  * Async Fallback Engine for Monetization.
- * Implements a strict 5000ms timeout waterfall:
- * InMobi (Primary) -> Start.io (Automatic Fallback).
+ * Implements a strict, stable 7000ms timeout waterfall:
+ * Start.io (Primary Real Ads) -> InMobi (Automatic Fallback with verified placement IDs).
  */
 object AdFallbackManager {
 
     private const val TAG = "AdFallbackManager"
-    private const val AD_TIMEOUT_MS = 5000L
+    // Stable 7-second loading window for real ad auctions & high-fill rendering
+    private const val AD_TIMEOUT_MS = 7000L
+
+    private val adExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.e(TAG, "Ad coroutine exception handled gracefully: ${throwable.message}", throwable)
+    }
 
     // ==========================================
-    // 1. INTERSTITIAL ADS (InMobi -> Start.io)
+    // 1. INTERSTITIAL ADS (Start.io -> InMobi)
     // ==========================================
 
-    suspend fun showInterstitialWithFallback(activity: Activity): AdShowResult = withContext(Dispatchers.Main) {
-        // Ensure SDKs are initialized
-        AdSdkInitializer.initialize(activity)
+    suspend fun showInterstitialWithFallback(activity: Activity): AdShowResult = withContext(Dispatchers.Main + adExceptionHandler) {
+        try {
+            // Ensure SDKs are initialized
+            AdSdkInitializer.initialize(activity)
 
-        // Attempt InMobi Interstitial with 5s timeout
-        val inMobiResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
-            loadInMobiInterstitial(activity)
-        }
+            // Attempt Start.io Interstitial first (Primary Real Ad Network)
+            val startIoResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
+                loadStartIoInterstitial(activity)
+            }
 
-        if (inMobiResult is AdShowResult.Shown) {
-            Log.d(TAG, "✓ Interstitial served by Primary network (InMobi)")
+            if (startIoResult is AdShowResult.Shown) {
+                Log.d(TAG, "✓ Interstitial served by Primary real ad network (Start.io)")
+                return@withContext startIoResult
+            }
+
+            Log.w(TAG, "Start.io Interstitial timed out or failed. Falling back to InMobi...")
+
+            // Fallback: InMobi Interstitial (7-second timeout window)
+            val inMobiResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
+                loadInMobiInterstitial(activity)
+            } ?: AdShowResult.Failed("Both Start.io and InMobi Interstitial failed to load within window")
+
             return@withContext inMobiResult
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during interstitial waterfall: ${e.message}", e)
+            AdShowResult.Failed("Interstitial exception: ${e.message}")
         }
-
-        Log.w(TAG, "InMobi Interstitial timed out or failed. Falling back to Start.io...")
-
-        // Fallback: Start.io Interstitial
-        val startIoResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
-            loadStartIoInterstitial(activity)
-        } ?: AdShowResult.Failed("Start.io Interstitial timed out")
-
-        return@withContext startIoResult
     }
 
     private suspend fun loadInMobiInterstitial(activity: Activity): AdShowResult =
         suspendCancellableCoroutine { continuation ->
             var isResumed = false
 
-            val interstitial = InMobiInterstitial(
-                activity,
-                AdSdkInitializer.INMOBI_PLACEMENT_INTERSTITIAL,
-                object : InterstitialAdEventListener() {
-                    override fun onAdLoadSucceeded(ad: InMobiInterstitial, info: AdMetaInfo) {
-                        if (!isResumed && continuation.isActive) {
-                            isResumed = true
-                            try {
-                                ad.show()
-                                continuation.resume(AdShowResult.Shown(AdNetwork.INMOBI))
-                            } catch (e: Exception) {
-                                continuation.resume(AdShowResult.Failed("InMobi show failed: ${e.message}"))
+            try {
+                val interstitial = InMobiInterstitial(
+                    activity,
+                    AdSdkInitializer.INMOBI_PLACEMENT_INTERSTITIAL,
+                    object : InterstitialAdEventListener() {
+                        override fun onAdLoadSucceeded(ad: InMobiInterstitial, info: AdMetaInfo) {
+                            if (!isResumed && continuation.isActive) {
+                                isResumed = true
+                                try {
+                                    ad.show()
+                                    continuation.resume(AdShowResult.Shown(AdNetwork.INMOBI))
+                                } catch (e: Exception) {
+                                    continuation.resume(AdShowResult.Failed("InMobi show failed: ${e.message}"))
+                                }
                             }
                         }
-                    }
 
-                    override fun onAdLoadFailed(ad: InMobiInterstitial, status: InMobiAdRequestStatus) {
-                        if (!isResumed && continuation.isActive) {
-                            isResumed = true
-                            continuation.resume(AdShowResult.Failed("InMobi load failed: ${status.message}"))
+                        override fun onAdLoadFailed(ad: InMobiInterstitial, status: InMobiAdRequestStatus) {
+                            if (!isResumed && continuation.isActive) {
+                                isResumed = true
+                                continuation.resume(AdShowResult.Failed("InMobi load failed: ${status.message}"))
+                            }
+                        }
+
+                        override fun onAdDisplayFailed(ad: InMobiInterstitial) {
+                            Log.w(TAG, "InMobi ad display failed")
                         }
                     }
+                )
 
-                    override fun onAdDisplayFailed(ad: InMobiInterstitial) {
-                        Log.w(TAG, "InMobi ad display failed")
-                    }
+                continuation.invokeOnCancellation {
+                    // Cancel ongoing ad request if coroutine timed out
                 }
-            )
 
-            continuation.invokeOnCancellation {
-                // Cancel ongoing ad request if coroutine timed out
-            }
-
-            try {
                 interstitial.load()
             } catch (e: Exception) {
                 if (!isResumed && continuation.isActive) {
@@ -138,65 +149,77 @@ object AdFallbackManager {
     private suspend fun loadStartIoInterstitial(activity: Activity): AdShowResult =
         suspendCancellableCoroutine { continuation ->
             var isResumed = false
-            val startAppAd = StartAppAd(activity)
+            try {
+                val startAppAd = StartAppAd(activity)
 
-            startAppAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
-                override fun onReceiveAd(ad: Ad) {
-                    if (!isResumed && continuation.isActive) {
-                        isResumed = true
-                        val shown = startAppAd.showAd(object : AdDisplayListener {
-                            override fun adHidden(ad: Ad?) {}
-                            override fun adDisplayed(ad: Ad?) {}
-                            override fun adClicked(ad: Ad?) {}
-                            override fun adNotDisplayed(ad: Ad?) {
-                                Log.w(TAG, "Start.io ad not displayed")
+                startAppAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
+                    override fun onReceiveAd(ad: Ad) {
+                        if (!isResumed && continuation.isActive) {
+                            isResumed = true
+                            val shown = startAppAd.showAd(object : AdDisplayListener {
+                                override fun adHidden(ad: Ad?) {}
+                                override fun adDisplayed(ad: Ad?) {}
+                                override fun adClicked(ad: Ad?) {}
+                                override fun adNotDisplayed(ad: Ad?) {
+                                    Log.w(TAG, "Start.io ad not displayed")
+                                }
+                            })
+                            if (shown) {
+                                continuation.resume(AdShowResult.Shown(AdNetwork.START_IO))
+                            } else {
+                                continuation.resume(AdShowResult.Failed("Start.io failed to show"))
                             }
-                        })
-                        if (shown) {
-                            continuation.resume(AdShowResult.Shown(AdNetwork.START_IO))
-                        } else {
-                            continuation.resume(AdShowResult.Failed("Start.io failed to show"))
                         }
                     }
-                }
 
-                override fun onFailedToReceiveAd(ad: Ad?) {
-                    if (!isResumed && continuation.isActive) {
-                        isResumed = true
-                        continuation.resume(AdShowResult.Failed("Start.io ad receive failed: ${ad?.errorMessage}"))
+                    override fun onFailedToReceiveAd(ad: Ad?) {
+                        if (!isResumed && continuation.isActive) {
+                            isResumed = true
+                            continuation.resume(AdShowResult.Failed("Start.io ad receive failed: ${ad?.errorMessage}"))
+                        }
                     }
+                })
+            } catch (e: Exception) {
+                if (!isResumed && continuation.isActive) {
+                    isResumed = true
+                    continuation.resume(AdShowResult.Failed("Start.io load exception: ${e.message}"))
                 }
-            })
+            }
         }
 
     // ==========================================
-    // 2. REWARDED VIDEO ADS (InMobi -> Start.io)
+    // 2. REWARDED VIDEO ADS (Start.io -> InMobi)
     // ==========================================
 
     suspend fun showRewardedWithFallback(
         activity: Activity,
         onRewardGranted: () -> Unit
-    ): AdShowResult = withContext(Dispatchers.Main) {
-        AdSdkInitializer.initialize(activity)
+    ): AdShowResult = withContext(Dispatchers.Main + adExceptionHandler) {
+        try {
+            AdSdkInitializer.initialize(activity)
 
-        // Attempt InMobi Rewarded with 5s timeout
-        val inMobiResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
-            loadInMobiRewarded(activity, onRewardGranted)
-        }
+            // Attempt Start.io Rewarded Video first (Primary Real Ad Network)
+            val startIoResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
+                loadStartIoRewarded(activity, onRewardGranted)
+            }
 
-        if (inMobiResult is AdShowResult.Shown) {
-            Log.d(TAG, "✓ Rewarded video served by Primary network (InMobi)")
+            if (startIoResult is AdShowResult.Shown) {
+                Log.d(TAG, "✓ Rewarded video served by Primary real ad network (Start.io)")
+                return@withContext startIoResult
+            }
+
+            Log.w(TAG, "Start.io Rewarded timed out or failed. Falling back to InMobi...")
+
+            // Fallback: InMobi Rewarded (7-second timeout window)
+            val inMobiResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
+                loadInMobiRewarded(activity, onRewardGranted)
+            } ?: AdShowResult.Failed("Both Start.io and InMobi Rewarded ads failed")
+
             return@withContext inMobiResult
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in rewarded video waterfall: ${e.message}", e)
+            AdShowResult.Failed("Rewarded ad error: ${e.message}")
         }
-
-        Log.w(TAG, "InMobi Rewarded timed out or failed. Falling back to Start.io...")
-
-        // Fallback: Start.io Rewarded Video
-        val startIoResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
-            loadStartIoRewarded(activity, onRewardGranted)
-        } ?: AdShowResult.Failed("Start.io Rewarded ad timed out")
-
-        return@withContext startIoResult
     }
 
     private suspend fun loadInMobiRewarded(
@@ -206,50 +229,49 @@ object AdFallbackManager {
         var isResumed = false
         var rewardUnlocked = false
 
-        val rewardedAd = InMobiInterstitial(
-            activity,
-            AdSdkInitializer.INMOBI_PLACEMENT_REWARDED,
-            object : InterstitialAdEventListener() {
-                override fun onAdLoadSucceeded(ad: InMobiInterstitial, info: AdMetaInfo) {
-                    if (!isResumed && continuation.isActive) {
-                        isResumed = true
-                        try {
-                            ad.show()
-                            continuation.resume(AdShowResult.Shown(AdNetwork.INMOBI))
-                        } catch (e: Exception) {
-                            continuation.resume(AdShowResult.Failed("InMobi show error: ${e.message}"))
+        try {
+            val rewardedAd = InMobiInterstitial(
+                activity,
+                AdSdkInitializer.INMOBI_PLACEMENT_REWARDED,
+                object : InterstitialAdEventListener() {
+                    override fun onAdLoadSucceeded(ad: InMobiInterstitial, info: AdMetaInfo) {
+                        if (!isResumed && continuation.isActive) {
+                            isResumed = true
+                            try {
+                                ad.show()
+                                continuation.resume(AdShowResult.Shown(AdNetwork.INMOBI))
+                            } catch (e: Exception) {
+                                continuation.resume(AdShowResult.Failed("InMobi show error: ${e.message}"))
+                            }
+                        }
+                    }
+
+                    override fun onAdLoadFailed(ad: InMobiInterstitial, status: InMobiAdRequestStatus) {
+                        if (!isResumed && continuation.isActive) {
+                            isResumed = true
+                            continuation.resume(AdShowResult.Failed("InMobi Rewarded load failed: ${status.message}"))
+                        }
+                    }
+
+                    override fun onRewardsUnlocked(ad: InMobiInterstitial, rewards: MutableMap<Any, Any>?) {
+                        super.onRewardsUnlocked(ad, rewards)
+                        if (!rewardUnlocked) {
+                            rewardUnlocked = true
+                            Log.i(TAG, "✓ InMobi Rewards unlocked callback received")
+                            onRewardGranted()
+                        }
+                    }
+
+                    override fun onAdDismissed(ad: InMobiInterstitial) {
+                        super.onAdDismissed(ad)
+                        if (!rewardUnlocked) {
+                            rewardUnlocked = true
+                            onRewardGranted()
                         }
                     }
                 }
+            )
 
-                override fun onAdLoadFailed(ad: InMobiInterstitial, status: InMobiAdRequestStatus) {
-                    if (!isResumed && continuation.isActive) {
-                        isResumed = true
-                        continuation.resume(AdShowResult.Failed("InMobi Rewarded load failed: ${status.message}"))
-                    }
-                }
-
-                override fun onRewardsUnlocked(ad: InMobiInterstitial, rewards: MutableMap<Any, Any>?) {
-                    super.onRewardsUnlocked(ad, rewards)
-                    if (!rewardUnlocked) {
-                        rewardUnlocked = true
-                        Log.i(TAG, "✓ InMobi Rewards unlocked callback received")
-                        onRewardGranted()
-                    }
-                }
-
-                override fun onAdDismissed(ad: InMobiInterstitial) {
-                    super.onAdDismissed(ad)
-                    // Ensure reward is delivered if completed
-                    if (!rewardUnlocked) {
-                        rewardUnlocked = true
-                        onRewardGranted()
-                    }
-                }
-            }
-        )
-
-        try {
             rewardedAd.load()
         } catch (e: Exception) {
             if (!isResumed && continuation.isActive) {
@@ -264,39 +286,47 @@ object AdFallbackManager {
         onRewardGranted: () -> Unit
     ): AdShowResult = suspendCancellableCoroutine { continuation ->
         var isResumed = false
-        val startAppAd = StartAppAd(activity)
         var rewardDelivered = false
 
-        startAppAd.setVideoListener(object : VideoListener {
-            override fun onVideoCompleted() {
-                if (!rewardDelivered) {
-                    rewardDelivered = true
-                    Log.i(TAG, "✓ Start.io Video completed. Unlocking user reward credits.")
-                    onRewardGranted()
-                }
-            }
-        })
+        try {
+            val startAppAd = StartAppAd(activity)
 
-        startAppAd.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
-            override fun onReceiveAd(ad: Ad) {
-                if (!isResumed && continuation.isActive) {
-                    isResumed = true
-                    val shown = startAppAd.showAd()
-                    if (shown) {
-                        continuation.resume(AdShowResult.Shown(AdNetwork.START_IO))
-                    } else {
-                        continuation.resume(AdShowResult.Failed("Start.io Rewarded show failed"))
+            startAppAd.setVideoListener(object : VideoListener {
+                override fun onVideoCompleted() {
+                    if (!rewardDelivered) {
+                        rewardDelivered = true
+                        Log.i(TAG, "✓ Start.io Video completed. Unlocking user reward credits.")
+                        onRewardGranted()
                     }
                 }
-            }
+            })
 
-            override fun onFailedToReceiveAd(ad: Ad?) {
-                if (!isResumed && continuation.isActive) {
-                    isResumed = true
-                    continuation.resume(AdShowResult.Failed("Start.io Rewarded failed to receive ad"))
+            startAppAd.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
+                override fun onReceiveAd(ad: Ad) {
+                    if (!isResumed && continuation.isActive) {
+                        isResumed = true
+                        val shown = startAppAd.showAd()
+                        if (shown) {
+                            continuation.resume(AdShowResult.Shown(AdNetwork.START_IO))
+                        } else {
+                            continuation.resume(AdShowResult.Failed("Start.io Rewarded show failed"))
+                        }
+                    }
                 }
+
+                override fun onFailedToReceiveAd(ad: Ad?) {
+                    if (!isResumed && continuation.isActive) {
+                        isResumed = true
+                        continuation.resume(AdShowResult.Failed("Start.io Rewarded failed to receive ad"))
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            if (!isResumed && continuation.isActive) {
+                isResumed = true
+                continuation.resume(AdShowResult.Failed("Start.io Rewarded exception: ${e.message}"))
             }
-        })
+        }
     }
 
     // ==========================================
@@ -326,28 +356,79 @@ object AdFallbackManager {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            // Ensure any child views added by third-party ad SDKs have valid compiled resource IDs
-            // to prevent AssetManager "No package ID ff found for resource ID 0xffffffff"
-            setOnHierarchyChangeListener(object : ViewGroup.OnHierarchyChangeListener {
-                override fun onChildViewAdded(parent: View?, child: View?) {
-                    if (child != null && child.id == View.NO_ID) {
-                        child.id = com.example.R.id.inmobi_banner_view
-                    }
-                    if (child is ViewGroup) {
-                        for (i in 0 until child.childCount) {
-                            val gc = child.getChildAt(i)
-                            if (gc != null && gc.id == View.NO_ID) {
-                                gc.id = com.example.R.id.inmobi_banner_view
-                            }
-                        }
-                    }
-                }
-                override fun onChildViewRemoved(parent: View?, child: View?) {}
-            })
         }
 
-        // Try InMobi Banner (320x50 standard banner)
+        // Recursively ensures any child or nested views added by third-party ad SDKs (Start.io, InMobi)
+        // have valid compiled application resource IDs, preventing AssetManager from logging
+        // "No package ID ff found for resource ID 0xffffffff".
+        fun recursivelySanitizeViewIds(view: View) {
+            if (view.id == View.NO_ID) {
+                view.id = com.example.R.id.startio_banner_view
+            }
+            if (view is ViewGroup) {
+                view.setOnHierarchyChangeListener(object : ViewGroup.OnHierarchyChangeListener {
+                    override fun onChildViewAdded(parent: View?, child: View?) {
+                        child?.let { recursivelySanitizeViewIds(it) }
+                    }
+                    override fun onChildViewRemoved(parent: View?, child: View?) {}
+                })
+                for (i in 0 until view.childCount) {
+                    val child = view.getChildAt(i)
+                    if (child != null) {
+                        recursivelySanitizeViewIds(child)
+                    }
+                }
+            }
+        }
+
+        recursivelySanitizeViewIds(container)
+
+        // Try Start.io Banner first (Primary Real Ads Network)
         try {
+            val startIoBanner = Banner(activityContext, object : BannerListener {
+                override fun onReceiveAd(bannerView: View) {
+                    Log.d(TAG, "✓ Start.io Real Banner loaded successfully")
+                    onAdLoaded(AdNetwork.START_IO)
+                }
+
+                override fun onFailedToReceiveAd(bannerView: View) {
+                    Log.w(TAG, "Start.io Banner returned NO FILL. Waterfalling to InMobi...")
+                    container.post {
+                        loadInMobiBannerFallback(container, activityContext, onAdLoaded, onAdFailed, ::recursivelySanitizeViewIds)
+                    }
+                }
+
+                override fun onClick(bannerView: View) {}
+                override fun onImpression(bannerView: View) {}
+            }).apply {
+                id = com.example.R.id.startio_banner_view
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = android.view.Gravity.CENTER
+                }
+            }
+
+            recursivelySanitizeViewIds(startIoBanner)
+            container.addView(startIoBanner)
+        } catch (e: Exception) {
+            Log.e(TAG, "Start.io banner creation error: ${e.message}, falling back to InMobi", e)
+            loadInMobiBannerFallback(container, activityContext, onAdLoaded, onAdFailed, ::recursivelySanitizeViewIds)
+        }
+
+        return container
+    }
+
+    private fun loadInMobiBannerFallback(
+        container: FrameLayout,
+        activityContext: Context,
+        onAdLoaded: (AdNetwork) -> Unit,
+        onAdFailed: (String) -> Unit,
+        sanitizeIds: ((View) -> Unit)? = null
+    ) {
+        try {
+            container.removeAllViews()
             val inMobiBanner = InMobiBanner(activityContext, AdSdkInitializer.INMOBI_PLACEMENT_BANNER).apply {
                 id = com.example.R.id.inmobi_banner_view
                 layoutParams = FrameLayout.LayoutParams(
@@ -362,134 +443,95 @@ object AdFallbackManager {
                 setRefreshInterval(30)
             }
 
+            sanitizeIds?.invoke(inMobiBanner)
+
             inMobiBanner.setListener(object : BannerAdEventListener() {
                 override fun onAdLoadSucceeded(ad: InMobiBanner, info: AdMetaInfo) {
-                    Log.d(TAG, "✓ InMobi Banner loaded successfully")
+                    Log.d(TAG, "✓ InMobi Fallback Banner loaded successfully")
                     onAdLoaded(AdNetwork.INMOBI)
                 }
 
                 override fun onAdLoadFailed(ad: InMobiBanner, status: InMobiAdRequestStatus) {
-                    Log.w(TAG, "InMobi Banner failed: ${status.message}. Switching container to Start.io...")
-                    container.post {
-                        container.removeAllViews()
-                        // Fallback to Start.io Banner
-                        try {
-                            val startIoBanner = Banner(activityContext, object : BannerListener {
-                                override fun onReceiveAd(bannerView: View) {
-                                    Log.d(TAG, "✓ Start.io Fallback Banner loaded")
-                                    onAdLoaded(AdNetwork.START_IO)
-                                }
-
-                                override fun onFailedToReceiveAd(bannerView: View) {
-                                    Log.w(TAG, "Start.io Banner returned no fill or error.")
-                                    onAdFailed("Both InMobi and Start.io banner ads failed to load.")
-                                }
-
-                                override fun onClick(bannerView: View) {}
-                                override fun onImpression(bannerView: View) {}
-                            }).apply {
-                                id = com.example.R.id.startio_banner_view
-                                layoutParams = FrameLayout.LayoutParams(
-                                    FrameLayout.LayoutParams.MATCH_PARENT,
-                                    FrameLayout.LayoutParams.WRAP_CONTENT
-                                ).apply {
-                                    gravity = android.view.Gravity.CENTER
-                                }
-                            }
-                            container.addView(startIoBanner)
-                        } catch (e: Exception) {
-                            onAdFailed("Start.io banner init error: ${e.message}")
-                        }
-                    }
+                    Log.w(TAG, "InMobi Fallback Banner returned status: ${status.message}")
+                    onAdFailed("Ad network returned no fill: ${status.message}")
                 }
             })
 
             container.addView(inMobiBanner)
             inMobiBanner.load()
         } catch (e: Exception) {
-            Log.e(TAG, "InMobi banner creation error: ${e.message}, falling back to Start.io", e)
-            try {
-                val startIoBanner = Banner(activityContext).apply {
-                    id = com.example.R.id.startio_banner_view
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        gravity = android.view.Gravity.CENTER
-                    }
-                }
-                container.addView(startIoBanner)
-                onAdLoaded(AdNetwork.START_IO)
-            } catch (err: Exception) {
-                onAdFailed("Failed to initialize banner ad: ${err.message}")
-            }
+            Log.e(TAG, "InMobi fallback banner creation error: ${e.message}", e)
+            onAdFailed("Failed to initialize fallback banner: ${e.message}")
         }
-
-        return container
     }
 
     // ==========================================
-    // 4. NATIVE ADS FEED (InMobi -> Start.io)
+    // 4. NATIVE ADS FEED (Start.io -> InMobi)
     // ==========================================
 
-    suspend fun loadNativeAd(context: Context): UnifiedNativeAd? = withContext(Dispatchers.Main) {
-        AdSdkInitializer.initialize(context)
+    suspend fun loadNativeAd(context: Context): UnifiedNativeAd? = withContext(Dispatchers.Main + adExceptionHandler) {
+        try {
+            AdSdkInitializer.initialize(context)
 
-        // 1. Try InMobi Native
-        val inMobiNative = withTimeoutOrNull(AD_TIMEOUT_MS) {
-            loadInMobiNative(context)
-        }
+            // 1. Try Start.io Native first (Primary Real Ads Network)
+            val startIoNative = withTimeoutOrNull(AD_TIMEOUT_MS) {
+                loadStartIoNative(context)
+            }
 
-        if (inMobiNative != null) {
-            Log.d(TAG, "✓ InMobi Native Ad loaded")
+            if (startIoNative != null) {
+                Log.d(TAG, "✓ Start.io Real Native Ad loaded")
+                return@withContext startIoNative
+            }
+
+            Log.w(TAG, "Start.io Native timed out or failed. Falling back to InMobi Native...")
+
+            // 2. Fallback: InMobi Native (7-second timeout window)
+            val inMobiNative = withTimeoutOrNull(AD_TIMEOUT_MS) {
+                loadInMobiNative(context)
+            }
+
             return@withContext inMobiNative
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading native ad: ${e.message}", e)
+            null
         }
-
-        Log.w(TAG, "InMobi Native timed out or failed. Falling back to Start.io Native...")
-
-        // 2. Fallback: Start.io Native
-        val startIoNative = withTimeoutOrNull(AD_TIMEOUT_MS) {
-            loadStartIoNative(context)
-        }
-
-        return@withContext startIoNative
     }
 
     private suspend fun loadInMobiNative(context: Context): UnifiedNativeAd? =
         suspendCancellableCoroutine { continuation ->
             var isResumed = false
 
-            val nativeAd = InMobiNative(
-                context,
-                AdSdkInitializer.INMOBI_PLACEMENT_NATIVE,
-                object : NativeAdEventListener() {
-                    override fun onAdLoadSucceeded(ad: InMobiNative, info: AdMetaInfo) {
-                        if (!isResumed && continuation.isActive) {
-                            isResumed = true
-                            val unified = UnifiedNativeAd(
-                                title = ad.adTitle ?: "Vyapar Partner Deal",
-                                description = ad.adDescription ?: "Special business offer for Indian merchants.",
-                                ctaText = ad.adCtaText ?: "Learn More",
-                                iconUrl = ad.adIconUrl,
-                                network = AdNetwork.INMOBI,
-                                onClick = {
-                                    ad.reportAdClickAndOpenLandingPage()
-                                }
-                            )
-                            continuation.resume(unified)
-                        }
-                    }
-
-                    override fun onAdLoadFailed(ad: InMobiNative, status: InMobiAdRequestStatus) {
-                        if (!isResumed && continuation.isActive) {
-                            isResumed = true
-                            continuation.resume(null)
-                        }
-                    }
-                }
-            )
-
             try {
+                val nativeAd = InMobiNative(
+                    context,
+                    AdSdkInitializer.INMOBI_PLACEMENT_NATIVE,
+                    object : NativeAdEventListener() {
+                        override fun onAdLoadSucceeded(ad: InMobiNative, info: AdMetaInfo) {
+                            if (!isResumed && continuation.isActive) {
+                                isResumed = true
+                                val unified = UnifiedNativeAd(
+                                    title = ad.adTitle ?: "Vyapar Partner Deal",
+                                    description = ad.adDescription ?: "Special business offer for Indian merchants.",
+                                    ctaText = ad.adCtaText ?: "Learn More",
+                                    iconUrl = ad.adIconUrl,
+                                    network = AdNetwork.INMOBI,
+                                    onClick = {
+                                        ad.reportAdClickAndOpenLandingPage()
+                                    }
+                                )
+                                continuation.resume(unified)
+                            }
+                        }
+
+                        override fun onAdLoadFailed(ad: InMobiNative, status: InMobiAdRequestStatus) {
+                            if (!isResumed && continuation.isActive) {
+                                isResumed = true
+                                continuation.resume(null)
+                            }
+                        }
+                    }
+                )
+
                 nativeAd.load()
             } catch (e: Exception) {
                 if (!isResumed && continuation.isActive) {
@@ -502,44 +544,51 @@ object AdFallbackManager {
     private suspend fun loadStartIoNative(context: Context): UnifiedNativeAd? =
         suspendCancellableCoroutine { continuation ->
             var isResumed = false
-            val startAppNative = StartAppNativeAd(context)
-            val preferences = NativeAdPreferences().apply {
-                adsNumber = 1
-                isAutoBitmapDownload = true
-            }
+            try {
+                val startAppNative = StartAppNativeAd(context)
+                val preferences = NativeAdPreferences().apply {
+                    adsNumber = 1
+                    isAutoBitmapDownload = true
+                }
 
-            startAppNative.loadAd(preferences, object : AdEventListener {
-                override fun onReceiveAd(ad: Ad) {
-                    if (!isResumed && continuation.isActive) {
-                        isResumed = true
-                        val adsList = startAppNative.nativeAds
-                        if (!adsList.isNullOrEmpty()) {
-                            val detail: NativeAdDetails = adsList[0]
-                            val unified = UnifiedNativeAd(
-                                title = detail.title ?: "Vyapar Recommended",
-                                description = detail.description ?: "Grow your retail shop with top merchant tools.",
-                                ctaText = detail.callToAction ?: "Install Now",
-                                iconUrl = detail.imageUrl,
-                                network = AdNetwork.START_IO,
-                                onClick = { clickCtx ->
-                                    val interactionView = android.view.View(clickCtx)
-                                    detail.registerViewForInteraction(interactionView)
-                                    interactionView.performClick()
-                                }
-                            )
-                            continuation.resume(unified)
-                        } else {
+                startAppNative.loadAd(preferences, object : AdEventListener {
+                    override fun onReceiveAd(ad: Ad) {
+                        if (!isResumed && continuation.isActive) {
+                            isResumed = true
+                            val adsList = startAppNative.nativeAds
+                            if (!adsList.isNullOrEmpty()) {
+                                val detail: NativeAdDetails = adsList[0]
+                                val unified = UnifiedNativeAd(
+                                    title = detail.title ?: "Vyapar Recommended",
+                                    description = detail.description ?: "Grow your retail shop with top merchant tools.",
+                                    ctaText = detail.callToAction ?: "Install Now",
+                                    iconUrl = detail.imageUrl,
+                                    network = AdNetwork.START_IO,
+                                    onClick = { clickCtx ->
+                                        val interactionView = android.view.View(clickCtx)
+                                        detail.registerViewForInteraction(interactionView)
+                                        interactionView.performClick()
+                                    }
+                                )
+                                continuation.resume(unified)
+                            } else {
+                                continuation.resume(null)
+                            }
+                        }
+                    }
+
+                    override fun onFailedToReceiveAd(ad: Ad?) {
+                        if (!isResumed && continuation.isActive) {
+                            isResumed = true
                             continuation.resume(null)
                         }
                     }
+                })
+            } catch (e: Exception) {
+                if (!isResumed && continuation.isActive) {
+                    isResumed = true
+                    continuation.resume(null)
                 }
-
-                override fun onFailedToReceiveAd(ad: Ad?) {
-                    if (!isResumed && continuation.isActive) {
-                        isResumed = true
-                        continuation.resume(null)
-                    }
-                }
-            })
+            }
         }
 }

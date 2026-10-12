@@ -8,12 +8,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.auth.AppLockManager
 import com.example.util.AppLocalization
 import com.example.util.LocalAppStrings
@@ -48,17 +48,17 @@ fun VyaparSetuNavGraph(
     appLockManager: AppLockManager,
     initialScreen: NavScreen = NavScreen.HOME
 ) {
-    val profile by viewModel.merchantProfile.collectAsState()
-    val isLocked by appLockManager.isLocked.collectAsState()
+    val profile by viewModel.merchantProfile.collectAsStateWithLifecycle()
+    val isLocked by appLockManager.isLocked.collectAsStateWithLifecycle()
 
     var currentScreen by remember { mutableStateOf(initialScreen) }
     var openAddCustomerModal by remember { mutableStateOf(false) }
 
     val voiceBillingViewModel: VoiceBillingViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
-    val isTourActive by viewModel.isAppTourActive.collectAsState()
-    val tourStep by viewModel.appTourStep.collectAsState()
-    val isConfettiActive by viewModel.showConfetti.collectAsState()
+    val isTourActive by viewModel.isAppTourActive.collectAsStateWithLifecycle()
+    val tourStep by viewModel.appTourStep.collectAsStateWithLifecycle()
+    val isConfettiActive by viewModel.showConfetti.collectAsStateWithLifecycle()
 
     // Background App Lock Gate via DisposableEffect lifecycle observer
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -122,134 +122,135 @@ fun VyaparSetuNavGraph(
     CompositionLocalProvider(LocalAppStrings provides currentStrings) {
         // 4. Main App Scaffold
         Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            if (currentScreen != NavScreen.DAILY_SUMMARY &&
-                currentScreen != NavScreen.REPORTS_ANALYTICS &&
-                currentScreen != NavScreen.TRANSACTION_HISTORY &&
-                currentScreen != NavScreen.SETTINGS &&
-                currentScreen != NavScreen.INVOICE_BILLING &&
-                currentScreen != NavScreen.PRINTER_SETUP &&
-                currentScreen != NavScreen.MINI_STORE &&
-                currentScreen != NavScreen.CONTACT_FEEDBACK
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                if (currentScreen != NavScreen.DAILY_SUMMARY &&
+                    currentScreen != NavScreen.REPORTS_ANALYTICS &&
+                    currentScreen != NavScreen.TRANSACTION_HISTORY &&
+                    currentScreen != NavScreen.SETTINGS &&
+                    currentScreen != NavScreen.INVOICE_BILLING &&
+                    currentScreen != NavScreen.PRINTER_SETUP &&
+                    currentScreen != NavScreen.MINI_STORE &&
+                    currentScreen != NavScreen.CONTACT_FEEDBACK
+                ) {
+                    AppTopBar(
+                        profile = profile,
+                        onLanguageSelected = { viewModel.updateLanguage(it) },
+                        onOpenSettings = { currentScreen = NavScreen.SETTINGS },
+                        onSoundboxTap = {
+                            viewModel.replayLastSoundboxAnnouncement()
+                        },
+                        onOpenContactFeedback = {
+                            currentScreen = NavScreen.CONTACT_FEEDBACK
+                        },
+                        onToggleTheme = {
+                            viewModel.setDarkMode(!profile.isDarkMode)
+                        }
+                    )
+                }
+            },
+            bottomBar = {
+                if (currentScreen.isBottomBarTab) {
+                    AppBottomNav(
+                        currentScreen = currentScreen,
+                        onScreenSelected = { currentScreen = it }
+                    )
+                }
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(if (currentScreen.isBottomBarTab) innerPadding else PaddingValues())
             ) {
-                AppTopBar(
-                    profile = profile,
-                    onLanguageSelected = { viewModel.updateLanguage(it) },
-                    onOpenSettings = { currentScreen = NavScreen.SETTINGS },
-                    onSoundboxTap = {
-                        viewModel.replayLastSoundboxAnnouncement()
-                    },
-                    onOpenContactFeedback = {
-                        currentScreen = NavScreen.CONTACT_FEEDBACK
-                    },
-                    onToggleTheme = {
-                        viewModel.setDarkMode(!profile.isDarkMode)
+                when (currentScreen) {
+                    NavScreen.HOME -> HomeScreen(
+                        viewModel = viewModel,
+                        onNavigate = { currentScreen = it },
+                        onOpenAddCustomer = {
+                            currentScreen = NavScreen.KHATA
+                            openAddCustomerModal = true
+                        }
+                    )
+                    NavScreen.POS_QR -> {
+                        val isPosUnlocked by viewModel.isPosUnlocked.collectAsStateWithLifecycle()
+                        if (profile.posBiometricLockEnabled && !isPosUnlocked) {
+                            PosLoginScreen(
+                                viewModel = viewModel,
+                                onUnlocked = { viewModel.setPosUnlocked(true) },
+                                onBack = { currentScreen = NavScreen.HOME }
+                            )
+                        } else {
+                            PosQrScreen(
+                                viewModel = viewModel,
+                                onLockPos = { viewModel.setPosUnlocked(false) }
+                            )
+                        }
                     }
-                )
-            }
-        },
-        bottomBar = {
-            if (currentScreen.isBottomBarTab) {
-                AppBottomNav(
-                    currentScreen = currentScreen,
-                    onScreenSelected = { currentScreen = it }
-                )
-            }
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(if (currentScreen.isBottomBarTab) innerPadding else PaddingValues())
-        ) {
-            when (currentScreen) {
-                NavScreen.HOME -> HomeScreen(
-                    viewModel = viewModel,
-                    onNavigate = { currentScreen = it },
-                    onOpenAddCustomer = {
-                        currentScreen = NavScreen.KHATA
-                        openAddCustomerModal = true
-                    }
-                )
-                NavScreen.POS_QR -> {
-                    val isPosUnlocked by viewModel.isPosUnlocked.collectAsState()
-                    if (profile.posBiometricLockEnabled && !isPosUnlocked) {
-                        PosLoginScreen(
+                    NavScreen.KHATA -> {
+                        KhataScreen(
                             viewModel = viewModel,
-                            onUnlocked = { viewModel.setPosUnlocked(true) },
-                            onBack = { currentScreen = NavScreen.HOME }
-                        )
-                    } else {
-                        PosQrScreen(
-                            viewModel = viewModel,
-                            onLockPos = { viewModel.setPosUnlocked(false) }
+                            showAddCustomerInitially = openAddCustomerModal,
+                            onAddCustomerHandled = { openAddCustomerModal = false }
                         )
                     }
+                    NavScreen.INVENTORY -> InventoryScreen(viewModel = viewModel)
+                    NavScreen.OCR_SCAN -> OcrScreen(viewModel = viewModel)
+                    NavScreen.AI_BOL -> AiBolScreen(viewModel = viewModel)
+                    NavScreen.DAILY_SUMMARY -> DailySummaryScreen(
+                        viewModel = viewModel,
+                        onBack = { currentScreen = NavScreen.HOME }
+                    )
+                    NavScreen.REPORTS_ANALYTICS -> ReportsAnalyticsScreen(
+                        viewModel = viewModel,
+                        onBack = { currentScreen = NavScreen.HOME }
+                    )
+                    NavScreen.TRANSACTION_HISTORY -> TransactionHistoryScreen(
+                        viewModel = viewModel,
+                        onBack = { currentScreen = NavScreen.HOME }
+                    )
+                    NavScreen.SETTINGS -> SettingsScreen(
+                        viewModel = viewModel,
+                        appLockManager = appLockManager,
+                        onBack = { currentScreen = NavScreen.HOME },
+                        onOpenDailyClosing = { currentScreen = NavScreen.DAILY_SUMMARY },
+                        onOpenContactFeedback = { currentScreen = NavScreen.CONTACT_FEEDBACK }
+                    )
+                    NavScreen.INVOICE_BILLING -> InvoiceBillingScreen(
+                        viewModel = viewModel,
+                        voiceViewModel = voiceBillingViewModel,
+                        onBack = { currentScreen = NavScreen.HOME },
+                        onNavigatePrinterSetup = { currentScreen = NavScreen.PRINTER_SETUP }
+                    )
+                    NavScreen.PRINTER_SETUP -> PrinterSetupScreen(
+                        viewModel = viewModel,
+                        onBack = { currentScreen = NavScreen.HOME }
+                    )
+                    NavScreen.MINI_STORE -> MiniStoreCatalogScreen(
+                        viewModel = viewModel,
+                        onBack = { currentScreen = NavScreen.HOME }
+                    )
+                    NavScreen.CONTACT_FEEDBACK -> ContactFeedbackScreen(
+                        viewModel = viewModel,
+                        onBack = { currentScreen = NavScreen.HOME }
+                    )
                 }
-                NavScreen.KHATA -> KhataScreen(
-                    viewModel = viewModel,
-                    showAddCustomerInitially = openAddCustomerModal
-                ).also {
-                    openAddCustomerModal = false
-                }
-                NavScreen.INVENTORY -> InventoryScreen(viewModel = viewModel)
-                NavScreen.OCR_SCAN -> OcrScreen(viewModel = viewModel)
-                NavScreen.AI_BOL -> AiBolScreen(viewModel = viewModel)
-                NavScreen.DAILY_SUMMARY -> DailySummaryScreen(
-                    viewModel = viewModel,
-                    onBack = { currentScreen = NavScreen.HOME }
+
+                // Interactive Guided Onboarding Tour Overlay
+                AppTourOverlay(
+                    active = isTourActive,
+                    currentStep = tourStep,
+                    onNextStep = { viewModel.nextAppTourStep() },
+                    onDismiss = { viewModel.dismissAppTour() }
                 )
-                NavScreen.REPORTS_ANALYTICS -> ReportsAnalyticsScreen(
-                    viewModel = viewModel,
-                    onBack = { currentScreen = NavScreen.HOME }
-                )
-                NavScreen.TRANSACTION_HISTORY -> TransactionHistoryScreen(
-                    viewModel = viewModel,
-                    onBack = { currentScreen = NavScreen.HOME }
-                )
-                NavScreen.SETTINGS -> SettingsScreen(
-                    viewModel = viewModel,
-                    appLockManager = appLockManager,
-                    onBack = { currentScreen = NavScreen.HOME },
-                    onOpenDailyClosing = { currentScreen = NavScreen.DAILY_SUMMARY },
-                    onOpenContactFeedback = { currentScreen = NavScreen.CONTACT_FEEDBACK }
-                )
-                NavScreen.INVOICE_BILLING -> InvoiceBillingScreen(
-                    viewModel = viewModel,
-                    voiceViewModel = voiceBillingViewModel,
-                    onBack = { currentScreen = NavScreen.HOME },
-                    onNavigatePrinterSetup = { currentScreen = NavScreen.PRINTER_SETUP }
-                )
-                NavScreen.PRINTER_SETUP -> PrinterSetupScreen(
-                    viewModel = viewModel,
-                    onBack = { currentScreen = NavScreen.HOME }
-                )
-                NavScreen.MINI_STORE -> MiniStoreCatalogScreen(
-                    viewModel = viewModel,
-                    onBack = { currentScreen = NavScreen.HOME }
-                )
-                NavScreen.CONTACT_FEEDBACK -> ContactFeedbackScreen(
-                    viewModel = viewModel,
-                    onBack = { currentScreen = NavScreen.HOME }
+
+                // Full-Screen Particle Confetti Explosion Overlay
+                ConfettiExplosionOverlay(
+                    active = isConfettiActive,
+                    durationMillis = 3200L,
+                    onFinished = { viewModel.dismissConfetti() }
                 )
             }
-
-            // Interactive Guided Onboarding Tour Overlay
-            AppTourOverlay(
-                active = isTourActive,
-                currentStep = tourStep,
-                onNextStep = { viewModel.nextAppTourStep() },
-                onDismiss = { viewModel.dismissAppTour() }
-            )
-
-            // Full-Screen Particle Confetti Explosion Overlay
-            ConfettiExplosionOverlay(
-                active = isConfettiActive,
-                durationMillis = 3200L,
-                onFinished = { viewModel.dismissConfetti() }
-            )
         }
     }
-}
 }

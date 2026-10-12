@@ -27,6 +27,7 @@ import com.example.service.DailyClosingWorker
 import com.example.service.SoundboxSpeaker
 import com.example.service.SyncWorker
 import com.example.util.ChimeSoundManager
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +43,10 @@ data class PosCartItem(
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val coroutineExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        android.util.Log.e("MainViewModel", "Unhandled coroutine error: ${throwable.message}", throwable)
+    }
 
     private val db = AppDatabase.getInstance(application)
     val preferencesRepository = UserPreferencesRepository(application)
@@ -104,18 +109,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         SyncWorker.enqueuePeriodicSync(application)
         recordDailyStreakActivity()
 
-        viewModelScope.launch {
-            feedbackRepository.seedInitialCommunityForumIfEmpty()
+        viewModelScope.launch(coroutineExceptionHandler) {
+            try {
+                feedbackRepository.seedInitialCommunityForumIfEmpty()
+            } catch (e: Exception) {
+                android.util.Log.w("MainViewModel", "Seed forum note: ${e.message}")
+            }
         }
 
         // Firestore real-time transaction confirmation listener
-        viewModelScope.launch {
-            preferencesRepository.merchantProfileFlow.collect { profile ->
-                if (profile.upiId.isNotBlank()) {
-                    FirestoreManager.listenForConfirmedTransactions(profile.upiId) { amount, payer, source ->
-                        triggerSoundboxAnnouncement(source, amount, payer)
+        viewModelScope.launch(coroutineExceptionHandler) {
+            try {
+                preferencesRepository.merchantProfileFlow.collect { profile ->
+                    if (profile.upiId.isNotBlank()) {
+                        FirestoreManager.listenForConfirmedTransactions(profile.upiId) { amount, payer, source ->
+                            triggerSoundboxAnnouncement(source, amount, payer)
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                android.util.Log.w("MainViewModel", "Firestore listener note: ${e.message}")
             }
         }
     }

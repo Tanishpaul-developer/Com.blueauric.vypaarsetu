@@ -44,11 +44,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,8 +84,8 @@ fun TransactionHistoryScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val allTransactions by viewModel.transactionRepository.allTransactions.collectAsState(initial = emptyList())
-    val merchantProfile by viewModel.merchantProfile.collectAsState()
+    val allTransactions by viewModel.transactionRepository.allTransactions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val merchantProfile by viewModel.merchantProfile.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("ALL") }
@@ -217,7 +217,7 @@ fun TransactionHistoryScreen(
                     "CASH" to "कैश (Cash)",
                     "CREDIT" to "बिक्री (Sales)"
                 )
-                items(filters) { (key, label) ->
+                items(filters, key = { it.first }) { (key, label) ->
                     val isSelected = selectedFilter == key
                     Box(
                         modifier = Modifier

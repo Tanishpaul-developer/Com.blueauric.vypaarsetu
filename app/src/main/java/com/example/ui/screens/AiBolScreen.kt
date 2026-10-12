@@ -63,11 +63,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,8 +107,8 @@ fun AiBolScreen(
 ) {
     val context = LocalContext.current
     val isDark = LocalIsDarkTheme.current
-    val uiState by chatViewModel.uiState.collectAsState()
-    val merchantProfile by viewModel.merchantProfile.collectAsState()
+    val uiState by chatViewModel.uiState.collectAsStateWithLifecycle()
+    val merchantProfile by viewModel.merchantProfile.collectAsStateWithLifecycle()
 
     var inputText by remember { mutableStateOf("") }
     var showLanguageDropdown by remember { mutableStateOf(false) }
@@ -116,7 +116,7 @@ fun AiBolScreen(
     val listState = rememberLazyListState()
 
     val adPolicy = remember { AdPolicyManager.getInstance(context) }
-    val remainingCredits by adPolicy.creditsState.collectAsState()
+    val remainingCredits by adPolicy.creditsState.collectAsStateWithLifecycle()
     var showRewardedAdDialog by remember { mutableStateOf(false) }
     var isAdLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -347,7 +347,7 @@ fun AiBolScreen(
                 .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(ChatCategory.values()) { category ->
+            items(ChatCategory.values(), key = { it.name }) { category ->
                 val isSelected = uiState.selectedCategory == category
                 val title = if (uiState.selectedLanguage == "en") category.titleEn else category.titleHi
 
@@ -385,7 +385,7 @@ fun AiBolScreen(
                     .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(quickPrompts) { promptItem ->
+                items(quickPrompts, key = { it.prompt }) { promptItem ->
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
@@ -415,7 +415,7 @@ fun AiBolScreen(
                 .padding(vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(uiState.messages) { message ->
+            items(uiState.messages, key = { it.id }) { message ->
                 ModernChatBubble(
                     message = message,
                     isSpeaking = uiState.speakingMessageId == message.id,

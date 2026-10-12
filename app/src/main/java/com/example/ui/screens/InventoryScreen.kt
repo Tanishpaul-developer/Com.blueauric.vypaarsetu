@@ -54,11 +54,11 @@ import androidx.compose.material3.Text
 import com.example.data.local.StockMovementEntity
 import java.text.SimpleDateFormat
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -94,12 +94,12 @@ fun InventoryScreen(
     viewModel: MainViewModel
 ) {
     val context = LocalContext.current
-    val profile by viewModel.merchantProfile.collectAsState()
-    val allProducts by viewModel.allProducts.collectAsState()
-    val lowStockProducts by viewModel.lowStockProducts.collectAsState()
-    val lowStockCount by viewModel.lowStockCount.collectAsState()
-    val totalInventoryValue by viewModel.totalInventoryValue.collectAsState()
-    val recentMovements by viewModel.recentStockMovements.collectAsState()
+    val profile by viewModel.merchantProfile.collectAsStateWithLifecycle()
+    val allProducts by viewModel.allProducts.collectAsStateWithLifecycle()
+    val lowStockProducts by viewModel.lowStockProducts.collectAsStateWithLifecycle()
+    val lowStockCount by viewModel.lowStockCount.collectAsStateWithLifecycle()
+    val totalInventoryValue by viewModel.totalInventoryValue.collectAsStateWithLifecycle()
+    val recentMovements by viewModel.recentStockMovements.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("सभी (All)") }
@@ -410,7 +410,7 @@ fun InventoryScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = PaddingValues(vertical = 4.dp)
                         ) {
-                            items(lowStockProducts) { item ->
+                            items(lowStockProducts, key = { it.id }) { item ->
                                 Row(
                                     modifier = Modifier
                                         .clip(CircleShape)
@@ -488,7 +488,7 @@ fun InventoryScreen(
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(categories) { cat ->
+                    items(categories, key = { it }) { cat ->
                         val isSelected = selectedCategory == cat
                         val isLowStockCat = cat.contains("कम स्टॉक")
                         Box(
@@ -982,7 +982,7 @@ fun AddEditProductDialog(
             // Category Chips
             Text("श्रेणी (Category):", style = MaterialTheme.typography.labelSmall.copy(color = TextMuted))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(categories) { cat ->
+                items(categories, key = { it }) { cat ->
                     val sel = category == cat
                     Box(
                         modifier = Modifier
@@ -1446,7 +1446,7 @@ fun StockMovementsHistoryDialog(
                     modifier = Modifier.fillMaxWidth().height(320.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(movements) { mov ->
+                    items(movements, key = { it.id }) { mov ->
                         val isPositive = mov.quantityDelta > 0
                         Row(
                             modifier = Modifier

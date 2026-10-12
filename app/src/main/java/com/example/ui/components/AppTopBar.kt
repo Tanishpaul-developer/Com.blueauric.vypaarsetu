@@ -42,8 +42,8 @@ import com.example.util.LocalAppStrings
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,7 +78,7 @@ fun AppTopBar(
     onToggleTheme: (() -> Unit)? = null
 ) {
     var showLangMenu by remember { mutableStateOf(false) }
-    val isSpeaking by SoundboxSpeaker.isSpeaking.collectAsState()
+    val isSpeaking by SoundboxSpeaker.isSpeaking.collectAsStateWithLifecycle()
 
     Surface(
         modifier = Modifier.fillMaxWidth(),

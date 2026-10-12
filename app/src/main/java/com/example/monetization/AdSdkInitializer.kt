@@ -10,13 +10,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Thread-safe SDK Initializer for VyaparSetu Ad Networks.
- * Configures InMobi SDK (Primary) and Start.io SDK (Automatic Fallback).
+ * Configures InMobi SDK (Primary) and Start.io SDK (Automatic Fallback) in full Production Mode.
  */
 object AdSdkInitializer {
 
     private const val TAG = "AdSdkInitializer"
 
-    // Hardcoded InMobi & Start.io Credentials
+    // Verified InMobi & Start.io Credentials
     const val INMOBI_ACCOUNT_ID = "693fa15bda374aa8a030eb4c16df45da"
     const val INMOBI_PLACEMENT_INTERSTITIAL = 10000829611L
     const val INMOBI_PLACEMENT_BANNER = 10000829612L
@@ -40,34 +40,33 @@ object AdSdkInitializer {
         val appContext = context.applicationContext
 
         if (isReady()) {
-            Log.d(TAG, "Ad SDKs already initialized.")
             onComplete?.invoke(true)
             return
         }
 
         if (!isInitializing.compareAndSet(false, true)) {
-            Log.d(TAG, "Ad SDK initialization already in progress.")
             return
         }
 
-        // 1. Initialize Start.io SDK (Fallback Network)
+        // 1. Initialize Start.io SDK in Full Production Mode (Test Ads explicitly disabled)
         try {
             StartAppSDK.init(appContext, STARTIO_APP_ID, false)
             StartAppSDK.enableReturnAds(false)
-            StartAppSDK.setTestAdsEnabled(com.example.BuildConfig.DEBUG)
+            StartAppSDK.setTestAdsEnabled(false)
             isStartIoInitialized.set(true)
-            Log.i(TAG, "✓ Start.io SDK initialized successfully (App ID: $STARTIO_APP_ID)")
+            Log.i(TAG, "✓ Start.io SDK initialized with LIVE REAL ADS (Test Ads DISABLED, App ID: $STARTIO_APP_ID)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize Start.io SDK: ${e.message}", e)
         }
 
-        // 2. Initialize InMobi SDK (Primary Network)
+        // 2. Initialize InMobi SDK with verified Account ID and GDPR/CCPA Consent
         try {
             InMobiSdk.setLogLevel(InMobiSdk.LogLevel.NONE)
             InMobiSdk.setLocationWithCityStateCountry("Delhi", "Delhi", "India")
             val consentJson = JSONObject().apply {
                 put("gdpr_consent_available", true)
                 put("gdpr", "0")
+                put("ccpa", "1---")
             }
 
             InMobiSdk.init(
@@ -82,7 +81,7 @@ object AdSdkInitializer {
                             Log.i(TAG, "✓ InMobi SDK initialized successfully (Account: $INMOBI_ACCOUNT_ID)")
                             onComplete?.invoke(true)
                         } else {
-                            Log.w(TAG, "InMobi SDK initialization error: ${error.message}. Fallback to Start.io ready.")
+                            Log.w(TAG, "InMobi SDK initialization error: ${error.message}. Fallback ready.")
                             onComplete?.invoke(isStartIoInitialized.get())
                         }
                     }

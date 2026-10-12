@@ -272,7 +272,7 @@ fun OnboardingScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(2.dp)
                 ) {
-                    items(SupportedLanguages) { lang ->
+                    items(SupportedLanguages, key = { it.code }) { lang ->
                         val isSelected = selectedLang == lang.code
 
                         Box(

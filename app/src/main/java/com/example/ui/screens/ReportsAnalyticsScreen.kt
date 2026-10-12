@@ -51,11 +51,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -116,10 +116,10 @@ fun ReportsAnalyticsScreen(
     val scope = rememberCoroutineScope()
     var selectedTimeframe by remember { mutableStateOf(AnalyticsTimeframe.WEEKLY) }
 
-    val merchantProfile by viewModel.merchantProfile.collectAsState()
-    val allTransactions by viewModel.transactionRepository.allTransactions.collectAsState(initial = emptyList())
-    val allCustomers by viewModel.khataRepository.allCustomers.collectAsState(initial = emptyList())
-    val allProducts by viewModel.inventoryRepository.allProducts.collectAsState(initial = emptyList())
+    val merchantProfile by viewModel.merchantProfile.collectAsStateWithLifecycle()
+    val allTransactions by viewModel.transactionRepository.allTransactions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val allCustomers by viewModel.khataRepository.allCustomers.collectAsStateWithLifecycle(initialValue = emptyList())
+    val allProducts by viewModel.inventoryRepository.allProducts.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val cutoffTime = remember(selectedTimeframe) {
         System.currentTimeMillis() - (selectedTimeframe.days * 86400000L)

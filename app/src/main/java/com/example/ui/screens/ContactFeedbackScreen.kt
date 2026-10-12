@@ -70,8 +70,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -117,8 +117,8 @@ fun ContactFeedbackScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val profile by viewModel.merchantProfile.collectAsState()
-    val feedbacks by viewModel.allFeedbacks.collectAsState()
+    val profile by viewModel.merchantProfile.collectAsStateWithLifecycle()
+    val feedbacks by viewModel.allFeedbacks.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Contact & Forum, 1: Submit Feedback, 2: App FAQ
     var selectedCategoryFilter by remember { mutableStateOf("All") }
@@ -255,7 +255,7 @@ fun ContactFeedbackScreen(
                         item {
                             val categories = listOf("All", "Feature Request", "Billing & Soundbox", "UI/UX", "Bug Report")
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(categories) { cat ->
+                                items(categories, key = { it }) { cat ->
                                     val isSelected = selectedCategoryFilter == cat
                                     FilterChip(
                                         selected = isSelected,
@@ -342,7 +342,7 @@ fun ContactFeedbackScreen(
                                     Text("श्रेणी चुनें (Select Category)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
                                     val formCats = listOf("Feature Request", "Bug Report", "UI/UX", "Billing & Soundbox", "General")
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        items(formCats) { cat ->
+                                        items(formCats, key = { it }) { cat ->
                                             val isSel = feedbackCategory == cat
                                             Box(
                                                 modifier = Modifier
@@ -738,7 +738,7 @@ private fun AiFaqSection(
     viewModel: MainViewModel,
     context: Context
 ) {
-    val profile by viewModel.merchantProfile.collectAsState()
+    val profile by viewModel.merchantProfile.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var userQueryInput by remember { mutableStateOf("") }
     var isThinking by remember { mutableStateOf(false) }
@@ -833,7 +833,7 @@ private fun AiFaqSection(
                     // Quick Prompt Chips
                     Text("त्वरित प्रश्न (Quick Feature Questions):", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(quickQuestions) { q ->
+                        items(quickQuestions, key = { it }) { q ->
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
@@ -891,7 +891,7 @@ private fun AiFaqSection(
         }
 
         // Conversation history bubbles
-        items(conversation) { (role, message) ->
+        items(conversation, key = { "${it.first}_${it.second.hashCode()}" }) { (role, message) ->
             val isUser = role == "User"
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -989,7 +989,7 @@ private fun AiFaqSection(
                     "You can email Tanish Paul directly at blueauricstudio@gmail.com, use the 'Email Dev' button on the Contact tab, or post your query to the Community Forum."
         )
 
-        items(faqItems) { (question, answer) ->
+        items(faqItems, key = { it.first }) { (question, answer) ->
             FaqAccordionCard(question = question, answer = answer)
         }
     }
