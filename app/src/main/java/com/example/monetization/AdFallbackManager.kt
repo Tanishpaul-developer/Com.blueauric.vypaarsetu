@@ -75,24 +75,24 @@ object AdFallbackManager {
             // Ensure SDKs are initialized
             AdSdkInitializer.initialize(activity)
 
-            // Attempt Start.io Interstitial first (Primary Real Ad Network)
-            val startIoResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
-                loadStartIoInterstitial(activity)
-            }
-
-            if (startIoResult is AdShowResult.Shown) {
-                Log.d(TAG, "✓ Interstitial served by Primary real ad network (Start.io)")
-                return@withContext startIoResult
-            }
-
-            Log.w(TAG, "Start.io Interstitial timed out or failed. Falling back to InMobi...")
-
-            // Fallback: InMobi Interstitial (7-second timeout window)
+            // Attempt InMobi Interstitial first (Primary Real Ad Network)
             val inMobiResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
                 loadInMobiInterstitial(activity)
-            } ?: AdShowResult.Failed("Both Start.io and InMobi Interstitial failed to load within window")
+            }
 
-            return@withContext inMobiResult
+            if (inMobiResult is AdShowResult.Shown) {
+                Log.d(TAG, "✓ Interstitial served by Primary real ad network (InMobi)")
+                return@withContext inMobiResult
+            }
+
+            Log.w(TAG, "InMobi Interstitial returned no fill or timed out. Falling back to Start.io...")
+
+            // Secondary Fallback: Start.io Interstitial (7-second timeout window)
+            val startIoResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
+                loadStartIoInterstitial(activity)
+            } ?: AdShowResult.Failed("Both InMobi and Start.io Interstitial failed to load within window")
+
+            return@withContext startIoResult
         } catch (e: Exception) {
             Log.e(TAG, "Error during interstitial waterfall: ${e.message}", e)
             AdShowResult.Failed("Interstitial exception: ${e.message}")
@@ -198,24 +198,24 @@ object AdFallbackManager {
         try {
             AdSdkInitializer.initialize(activity)
 
-            // Attempt Start.io Rewarded Video first (Primary Real Ad Network)
-            val startIoResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
-                loadStartIoRewarded(activity, onRewardGranted)
-            }
-
-            if (startIoResult is AdShowResult.Shown) {
-                Log.d(TAG, "✓ Rewarded video served by Primary real ad network (Start.io)")
-                return@withContext startIoResult
-            }
-
-            Log.w(TAG, "Start.io Rewarded timed out or failed. Falling back to InMobi...")
-
-            // Fallback: InMobi Rewarded (7-second timeout window)
+            // Attempt InMobi Rewarded Video first (Primary Real Ad Network)
             val inMobiResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
                 loadInMobiRewarded(activity, onRewardGranted)
-            } ?: AdShowResult.Failed("Both Start.io and InMobi Rewarded ads failed")
+            }
 
-            return@withContext inMobiResult
+            if (inMobiResult is AdShowResult.Shown) {
+                Log.d(TAG, "✓ Rewarded video served by Primary real ad network (InMobi)")
+                return@withContext inMobiResult
+            }
+
+            Log.w(TAG, "InMobi Rewarded timed out or returned no fill. Falling back to Start.io...")
+
+            // Secondary Fallback: Start.io Rewarded (7-second timeout window)
+            val startIoResult = withTimeoutOrNull(AD_TIMEOUT_MS) {
+                loadStartIoRewarded(activity, onRewardGranted)
+            } ?: AdShowResult.Failed("Both InMobi and Start.io Rewarded ads failed")
+
+            return@withContext startIoResult
         } catch (e: Exception) {
             Log.e(TAG, "Error in rewarded video waterfall: ${e.message}", e)
             AdShowResult.Failed("Rewarded ad error: ${e.message}")
@@ -383,52 +383,8 @@ object AdFallbackManager {
 
         recursivelySanitizeViewIds(container)
 
-        // Try Start.io Banner first (Primary Real Ads Network)
+        // Try InMobi Banner first (Primary Real Ads Network)
         try {
-            val startIoBanner = Banner(activityContext, object : BannerListener {
-                override fun onReceiveAd(bannerView: View) {
-                    Log.d(TAG, "✓ Start.io Real Banner loaded successfully")
-                    onAdLoaded(AdNetwork.START_IO)
-                }
-
-                override fun onFailedToReceiveAd(bannerView: View) {
-                    Log.w(TAG, "Start.io Banner returned NO FILL. Waterfalling to InMobi...")
-                    container.post {
-                        loadInMobiBannerFallback(container, activityContext, onAdLoaded, onAdFailed, ::recursivelySanitizeViewIds)
-                    }
-                }
-
-                override fun onClick(bannerView: View) {}
-                override fun onImpression(bannerView: View) {}
-            }).apply {
-                id = com.example.R.id.startio_banner_view
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = android.view.Gravity.CENTER
-                }
-            }
-
-            recursivelySanitizeViewIds(startIoBanner)
-            container.addView(startIoBanner)
-        } catch (e: Exception) {
-            Log.e(TAG, "Start.io banner creation error: ${e.message}, falling back to InMobi", e)
-            loadInMobiBannerFallback(container, activityContext, onAdLoaded, onAdFailed, ::recursivelySanitizeViewIds)
-        }
-
-        return container
-    }
-
-    private fun loadInMobiBannerFallback(
-        container: FrameLayout,
-        activityContext: Context,
-        onAdLoaded: (AdNetwork) -> Unit,
-        onAdFailed: (String) -> Unit,
-        sanitizeIds: ((View) -> Unit)? = null
-    ) {
-        try {
-            container.removeAllViews()
             val inMobiBanner = InMobiBanner(activityContext, AdSdkInitializer.INMOBI_PLACEMENT_BANNER).apply {
                 id = com.example.R.id.inmobi_banner_view
                 layoutParams = FrameLayout.LayoutParams(
@@ -443,24 +399,68 @@ object AdFallbackManager {
                 setRefreshInterval(30)
             }
 
-            sanitizeIds?.invoke(inMobiBanner)
+            recursivelySanitizeViewIds(inMobiBanner)
 
             inMobiBanner.setListener(object : BannerAdEventListener() {
                 override fun onAdLoadSucceeded(ad: InMobiBanner, info: AdMetaInfo) {
-                    Log.d(TAG, "✓ InMobi Fallback Banner loaded successfully")
+                    Log.d(TAG, "✓ InMobi Primary Real Banner loaded successfully")
                     onAdLoaded(AdNetwork.INMOBI)
                 }
 
                 override fun onAdLoadFailed(ad: InMobiBanner, status: InMobiAdRequestStatus) {
-                    Log.w(TAG, "InMobi Fallback Banner returned status: ${status.message}")
-                    onAdFailed("Ad network returned no fill: ${status.message}")
+                    Log.w(TAG, "InMobi Banner returned NO FILL (${status.message}). Waterfalling to Start.io...")
+                    container.post {
+                        loadStartIoBannerFallback(container, activityContext, onAdLoaded, onAdFailed, ::recursivelySanitizeViewIds)
+                    }
                 }
             })
 
             container.addView(inMobiBanner)
             inMobiBanner.load()
         } catch (e: Exception) {
-            Log.e(TAG, "InMobi fallback banner creation error: ${e.message}", e)
+            Log.e(TAG, "InMobi banner creation error: ${e.message}, falling back to Start.io", e)
+            loadStartIoBannerFallback(container, activityContext, onAdLoaded, onAdFailed, ::recursivelySanitizeViewIds)
+        }
+
+        return container
+    }
+
+    private fun loadStartIoBannerFallback(
+        container: FrameLayout,
+        activityContext: Context,
+        onAdLoaded: (AdNetwork) -> Unit,
+        onAdFailed: (String) -> Unit,
+        sanitizeIds: ((View) -> Unit)? = null
+    ) {
+        try {
+            container.removeAllViews()
+            val startIoBanner = Banner(activityContext, object : BannerListener {
+                override fun onReceiveAd(bannerView: View) {
+                    Log.d(TAG, "✓ Start.io Fallback Banner loaded successfully")
+                    onAdLoaded(AdNetwork.START_IO)
+                }
+
+                override fun onFailedToReceiveAd(bannerView: View) {
+                    Log.w(TAG, "Start.io Fallback Banner returned NO FILL")
+                    onAdFailed("Both InMobi and Start.io banners returned no fill")
+                }
+
+                override fun onClick(bannerView: View) {}
+                override fun onImpression(bannerView: View) {}
+            }).apply {
+                id = com.example.R.id.startio_banner_view
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = android.view.Gravity.CENTER
+                }
+            }
+
+            sanitizeIds?.invoke(startIoBanner)
+            container.addView(startIoBanner)
+        } catch (e: Exception) {
+            Log.e(TAG, "Start.io fallback banner creation error: ${e.message}", e)
             onAdFailed("Failed to initialize fallback banner: ${e.message}")
         }
     }
@@ -473,24 +473,24 @@ object AdFallbackManager {
         try {
             AdSdkInitializer.initialize(context)
 
-            // 1. Try Start.io Native first (Primary Real Ads Network)
-            val startIoNative = withTimeoutOrNull(AD_TIMEOUT_MS) {
-                loadStartIoNative(context)
-            }
-
-            if (startIoNative != null) {
-                Log.d(TAG, "✓ Start.io Real Native Ad loaded")
-                return@withContext startIoNative
-            }
-
-            Log.w(TAG, "Start.io Native timed out or failed. Falling back to InMobi Native...")
-
-            // 2. Fallback: InMobi Native (7-second timeout window)
+            // 1. Try InMobi Native first (Primary Real Ads Network)
             val inMobiNative = withTimeoutOrNull(AD_TIMEOUT_MS) {
                 loadInMobiNative(context)
             }
 
-            return@withContext inMobiNative
+            if (inMobiNative != null) {
+                Log.d(TAG, "✓ InMobi Real Native Ad loaded")
+                return@withContext inMobiNative
+            }
+
+            Log.w(TAG, "InMobi Native timed out or failed. Falling back to Start.io Native...")
+
+            // 2. Secondary Fallback: Start.io Native (7-second timeout window)
+            val startIoNative = withTimeoutOrNull(AD_TIMEOUT_MS) {
+                loadStartIoNative(context)
+            }
+
+            return@withContext startIoNative
         } catch (e: Exception) {
             Log.e(TAG, "Error loading native ad: ${e.message}", e)
             null

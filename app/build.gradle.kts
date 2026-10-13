@@ -110,6 +110,7 @@ dependencies {
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.messaging)
+  implementation(libs.firebase.analytics)
   implementation(libs.zxing.core)
   implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.firebase.appcheck.debug)

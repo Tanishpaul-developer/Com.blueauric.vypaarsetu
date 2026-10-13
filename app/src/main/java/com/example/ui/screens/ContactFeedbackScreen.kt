@@ -94,6 +94,7 @@ import com.example.data.local.FeedbackEntity
 import com.example.ui.theme.CreditEmerald
 import com.example.ui.theme.CreditEmeraldDark
 import com.example.ui.theme.CreditEmeraldLight
+import com.example.ui.theme.DebitCoral
 import com.example.ui.theme.SurfaceLevel1
 import com.example.ui.theme.SurfaceLevel2
 import com.example.ui.theme.SurfaceOutline
@@ -126,9 +127,12 @@ fun ContactFeedbackScreen(
     // Feedback submission form state
     var feedbackTitle by remember { mutableStateOf("") }
     var feedbackMessage by remember { mutableStateOf("") }
-    var feedbackCategory by remember { mutableStateOf("Feature Request") }
+    var feedbackCategory by remember { mutableStateOf("Bug Report") }
+    var feedbackType by remember { mutableStateOf("bug") } // "bug" or "suggestion"
     var feedbackRating by remember { mutableIntStateOf(5) }
     var isSubmitting by remember { mutableStateOf(false) }
+    var showConfirmationDialog by remember { mutableStateOf(false) }
+    var lastSubmittedFeedbackTitle by remember { mutableStateOf("") }
 
     BackHandler {
         onBack()
@@ -338,9 +342,63 @@ fun ContactFeedbackScreen(
                                         style = MaterialTheme.typography.bodySmall.copy(color = TextMuted)
                                     )
 
+                                    // Feedback Type (Bug Report vs Feature Suggestion)
+                                    Text("प्रकार चुनें (Feedback Type)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        val isBug = feedbackCategory.contains("Bug", ignoreCase = true)
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (isBug) DebitCoral.copy(alpha = 0.2f) else SurfaceLevel1)
+                                                .border(1.5.dp, if (isBug) DebitCoral else SurfaceOutline, RoundedCornerShape(10.dp))
+                                                .clickable {
+                                                    feedbackCategory = "Bug Report"
+                                                    feedbackType = "bug"
+                                                }
+                                                .padding(vertical = 10.dp, horizontal = 12.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                "🐞 बग रिपोर्ट (Bug)",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isBug) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isBug) DebitCoral else TextSecondary
+                                            )
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (!isBug) TrustBlue.copy(alpha = 0.2f) else SurfaceLevel1)
+                                                .border(1.5.dp, if (!isBug) TrustBlue else SurfaceOutline, RoundedCornerShape(10.dp))
+                                                .clickable {
+                                                    feedbackCategory = "Feature Request"
+                                                    feedbackType = "suggestion"
+                                                }
+                                                .padding(vertical = 10.dp, horizontal = 12.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                "💡 नया सुझाव (Suggestion)",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (!isBug) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (!isBug) TrustBlue else TextSecondary
+                                            )
+                                        }
+                                    }
+
                                     // Category selector
                                     Text("श्रेणी चुनें (Select Category)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary)
-                                    val formCats = listOf("Feature Request", "Bug Report", "UI/UX", "Billing & Soundbox", "General")
+                                    val formCats = if (feedbackCategory.contains("Bug", ignoreCase = true)) {
+                                        listOf("Bug Report", "POS Crash / Bug", "Printer Issue", "QR Glitch", "Soundbox Issue")
+                                    } else {
+                                        listOf("Feature Request", "UI/UX", "Billing & Invoicing", "WhatsApp Store", "General Idea")
+                                    }
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         items(formCats, key = { it }) { cat ->
                                             val isSel = feedbackCategory == cat
@@ -410,6 +468,7 @@ fun ContactFeedbackScreen(
                                             }
                                             isSubmitting = true
                                             scope.launch {
+                                                val submittedTitle = feedbackTitle
                                                 val entity = FeedbackEntity(
                                                     authorName = profile.ownerName.ifBlank { "Merchant (${profile.shopName})" },
                                                     authorEmail = profile.email.ifBlank { "merchant@vyaparsetu.app" },
@@ -420,11 +479,17 @@ fun ContactFeedbackScreen(
                                                     timestamp = System.currentTimeMillis()
                                                 )
                                                 viewModel.submitFeedback(entity)
+                                                // Log Google Analytics for Firebase feedback event
+                                                com.example.analytics.AnalyticsManager.logFeedbackSubmitted(
+                                                    type = if (feedbackCategory.contains("Bug", ignoreCase = true)) "BUG" else "SUGGESTION",
+                                                    category = feedbackCategory,
+                                                    rating = feedbackRating
+                                                )
                                                 isSubmitting = false
+                                                lastSubmittedFeedbackTitle = submittedTitle
                                                 feedbackTitle = ""
                                                 feedbackMessage = ""
-                                                selectedTab = 0 // Switch back to forum
-                                                Toast.makeText(context, "✓ आपका फीडबैक फोरम पर पोस्ट हो गया!", Toast.LENGTH_LONG).show()
+                                                showConfirmationDialog = true
                                             }
                                         },
                                         enabled = !isSubmitting,
@@ -437,7 +502,7 @@ fun ContactFeedbackScreen(
                                     ) {
                                         Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Submit to Community Forum", fontWeight = FontWeight.Bold)
+                                        Text("Submit to Firebase & Community", fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -449,6 +514,60 @@ fun ContactFeedbackScreen(
                     // TAB 2: AI Trained FAQ & How to use features
                     AiFaqSection(viewModel = viewModel, context = context)
                 }
+            }
+
+            // Confirmation Dialog upon successful feedback submission
+            if (showConfirmationDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        showConfirmationDialog = false
+                        selectedTab = 0
+                    },
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = CreditEmerald,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Text("फीडबैक सफलतापूर्वक दर्ज (Feedback Received)")
+                        }
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "धन्यवाद! आपका ${if (feedbackCategory.contains("Bug", ignoreCase = true)) "बग रिपोर्ट (Bug Report)" else "सुझाव (Suggestion)"} क्लाउड फायरस्टोर (Firebase Firestore) में टाइमस्टैम्प सहित सुरक्षित रूप से दर्ज कर लिया गया है।",
+                                style = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary)
+                            )
+                            Text(
+                                text = "\"$lastSubmittedFeedbackTitle\"",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = TrustBlue,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                            Text(
+                                text = "डेवलपर Tanish Paul और कम्युनिटी फोरम इसे तुरंत रिव्यू करेंगे।",
+                                style = MaterialTheme.typography.bodySmall.copy(color = TextMuted)
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showConfirmationDialog = false
+                                selectedTab = 0 // Return to community forum
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TrustBlue)
+                        ) {
+                            Text("ठीक है (View Forum)", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                )
             }
         }
     }

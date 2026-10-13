@@ -405,20 +405,24 @@ object FirestoreManager {
     ): Boolean {
         return try {
             val db = FirebaseFirestore.getInstance()
+            val feedbackType = if (feedback.category.contains("Bug", ignoreCase = true)) "bug" else "suggestion"
             val docRef = db.collection("feedbacks").document("fb_${feedback.id}_${System.currentTimeMillis()}")
             val data = hashMapOf(
                 "author_name" to feedback.authorName,
                 "author_email" to feedback.authorEmail,
+                "type" to feedbackType, // "bug" or "suggestion"
                 "category" to feedback.category,
                 "rating" to feedback.rating,
                 "title" to feedback.title,
                 "message" to feedback.message,
                 "timestamp" to feedback.timestamp,
+                "created_at" to com.google.firebase.Timestamp.now(),
                 "upvotes" to feedback.upvotes,
+                "status" to "SUBMITTED",
                 "developer_reply" to feedback.developerReply
             )
             docRef.set(data, SetOptions.merge()).await()
-            Log.d(TAG, "Feedback synced to Firestore /feedbacks")
+            Log.d(TAG, "✓ Feedback [$feedbackType] synced to Firestore /feedbacks with timestamp ${feedback.timestamp}")
             true
         } catch (e: Exception) {
             Log.d(TAG, "Feedback cloud sync bypassed: ${e.message}")

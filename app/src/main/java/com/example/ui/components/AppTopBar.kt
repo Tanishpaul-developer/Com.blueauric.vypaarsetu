@@ -71,6 +71,7 @@ import com.example.ui.theme.TrustBlue
 @Composable
 fun AppTopBar(
     profile: MerchantProfile,
+    isNetworkConnected: Boolean = true,
     onLanguageSelected: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onSoundboxTap: () -> Unit,
@@ -156,6 +157,9 @@ fun AppTopBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Offline status icon indicator
+                NetworkStatusIcon(isOnline = isNetworkConnected)
+
                 // Soundbox Live Waveform Badge
                 SoundboxIndicator(
                     isSpeaking = isSpeaking,

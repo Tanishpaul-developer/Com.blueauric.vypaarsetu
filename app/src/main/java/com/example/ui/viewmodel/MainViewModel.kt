@@ -58,6 +58,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val allFeedbacks: StateFlow<List<com.example.data.local.FeedbackEntity>> = feedbackRepository.allFeedbacks
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    // Real-time network connectivity monitor using ConnectivityManager
+    val connectivityMonitor = com.example.util.NetworkConnectivityMonitor.getInstance(application)
+    val isNetworkConnected: StateFlow<Boolean> = connectivityMonitor.isConnectedFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = connectivityMonitor.isConnected()
+        )
+
     fun submitFeedback(feedback: com.example.data.local.FeedbackEntity) {
         viewModelScope.launch {
             feedbackRepository.submitFeedback(feedback)
@@ -217,6 +226,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logoUri = logoUri,
                 businessCategory = category
             )
+            // Log Google Analytics for Firebase event
+            com.example.analytics.AnalyticsManager.logOnboardingCompleted(
+                shopName = shopName,
+                category = category,
+                language = langCode,
+                hasGst = gstNumber.isNotBlank(),
+                hasLogo = logoUri.isNotBlank()
+            )
         }
     }
 
@@ -353,6 +370,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 generateBitmaps = true
             )
             _splitBillResult.value = result
+            if (amount > 0) {
+                com.example.analytics.AnalyticsManager.logUpiQrGenerated(
+                    amount = amount,
+                    isAutoSplit = autoSplit,
+                    splitParts = result.parts.size
+                )
+            }
         }
     }
 
@@ -406,6 +430,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             speechRate = profile.soundboxSpeechRate,
             voiceTone = profile.soundboxVoiceTone,
             preChime = profile.soundboxPreChime
+        )
+        com.example.analytics.AnalyticsManager.logSoundboxModeActivated(
+            language = lang,
+            voiceTone = profile.soundboxVoiceTone,
+            amountAnnounced = amount
         )
     }
 
@@ -638,6 +667,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // Soundbox announcement for payment
                 triggerSoundboxAnnouncement(source, totalAmount, "Counter Customer")
+
+                // Log Google Analytics for Firebase event
+                com.example.analytics.AnalyticsManager.logPosTransaction(
+                    amount = totalAmount,
+                    itemCount = cartItems.sumOf { it.quantity }.toInt().coerceAtLeast(1),
+                    paymentMode = source,
+                    isTaxInvoice = false,
+                    hasDiscount = false
+                )
             }
 
             // 4. Clear cart after successful sale
@@ -848,6 +886,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ChimeSoundManager.playSuccessBeep()
             }
             triggerSoundboxAnnouncement("UPI", amount, customer?.name ?: "Khata Settlement")
+            // Log Google Analytics for Firebase event
+            com.example.analytics.AnalyticsManager.logLedgerOperation(
+                operationType = "JAMA",
+                amount = amount,
+                customerId = customerId
+            )
         }
     }
 
@@ -861,6 +905,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _showConfetti.value = true
                 ChimeSoundManager.playCashRegisterChime()
                 triggerSoundboxAnnouncement("UPI", fullAmount, customer.name)
+                // Log Google Analytics for Firebase event
+                com.example.analytics.AnalyticsManager.logLedgerOperation(
+                    operationType = "JAMA",
+                    amount = fullAmount,
+                    customerId = customerId
+                )
             }
         }
     }
@@ -868,6 +918,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun recordCustomerUdhar(customerId: Long, amount: Double, description: String) {
         viewModelScope.launch {
             khataRepository.recordUdhar(customerId, amount, description)
+            // Log Google Analytics for Firebase event
+            com.example.analytics.AnalyticsManager.logLedgerOperation(
+                operationType = "UDHAR",
+                amount = amount,
+                customerId = customerId
+            )
         }
     }
 
@@ -956,11 +1012,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun processOcr(bmp: Bitmap) {
         viewModelScope.launch {
             _isOcrProcessing.value = true
+            if (!connectivityMonitor.isConnected()) {
+                android.widget.Toast.makeText(
+                    getApplication(),
+                    "इंटरनेट कनेक्शन उपलब्ध नहीं है (No Internet Connection). ऑफलाइन मोड में स्थानीय OCR परिणाम तैयार किए जा रहे हैं।",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
             val result = GeminiClient.analyzeScreenshot(bmp)
             result.onSuccess { parsed ->
                 _ocrResult.value = parsed
                 // Automatically save to Cloud Firestore and Room
-                FirestoreManager.saveOcrTransaction(merchantProfile.value.upiId, parsed)
+                if (connectivityMonitor.isConnected()) {
+                    FirestoreManager.saveOcrTransaction(merchantProfile.value.upiId, parsed)
+                }
                 transactionRepository.recordTransaction(
                     TransactionEntity(
                         amount = parsed.amount,
@@ -971,6 +1036,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "SETTLED",
                         note = "Verified via Gemini 2.5 Flash Screenshot OCR"
                     )
+                )
+                // Log Google Analytics for Firebase event
+                com.example.analytics.AnalyticsManager.logOcrUsed(
+                    detectedAmount = parsed.amount,
+                    payerFound = parsed.payerName.isNotBlank(),
+                    upiRefFound = parsed.upiRef.isNotBlank(),
+                    language = merchantProfile.value.languageCode
                 )
             }
             _isOcrProcessing.value = false
@@ -1034,6 +1106,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             _chatMessages.value = _chatMessages.value + ChatMessage(text = reply, isUser = false)
             _isChatbotLoading.value = false
+
+            // Log Google Analytics for Firebase event
+            com.example.analytics.AnalyticsManager.logChatbotInteraction(
+                queryCategory = "STORE_ADVICE",
+                language = profile.languageCode,
+                isVoiceInput = false
+            )
         }
     }
 

@@ -21,6 +21,7 @@ import com.example.ui.components.AppBottomNav
 import com.example.ui.components.AppTopBar
 import com.example.ui.components.AppTourOverlay
 import com.example.ui.components.ConfettiExplosionOverlay
+import com.example.ui.components.NetworkStatusBanner
 import com.example.ui.components.NavScreen
 import com.example.ui.screens.AiBolScreen
 import com.example.ui.screens.AppLockScreen
@@ -59,6 +60,7 @@ fun VyaparSetuNavGraph(
     val isTourActive by viewModel.isAppTourActive.collectAsStateWithLifecycle()
     val tourStep by viewModel.appTourStep.collectAsStateWithLifecycle()
     val isConfettiActive by viewModel.showConfetti.collectAsStateWithLifecycle()
+    val isNetworkConnected by viewModel.isNetworkConnected.collectAsStateWithLifecycle()
 
     // Background App Lock Gate via DisposableEffect lifecycle observer
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -135,6 +137,7 @@ fun VyaparSetuNavGraph(
                 ) {
                     AppTopBar(
                         profile = profile,
+                        isNetworkConnected = isNetworkConnected,
                         onLanguageSelected = { viewModel.updateLanguage(it) },
                         onOpenSettings = { currentScreen = NavScreen.SETTINGS },
                         onSoundboxTap = {
@@ -249,6 +252,12 @@ fun VyaparSetuNavGraph(
                     active = isConfettiActive,
                     durationMillis = 3200L,
                     onFinished = { viewModel.dismissConfetti() }
+                )
+
+                // Real-Time Network Connectivity Banner (Non-intrusive status notification)
+                NetworkStatusBanner(
+                    isOnline = isNetworkConnected,
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter)
                 )
             }
         }

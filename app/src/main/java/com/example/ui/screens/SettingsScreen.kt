@@ -77,12 +77,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -93,6 +93,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import com.example.ai.GeminiClient
 import com.example.auth.AppLockManager
 import com.example.ui.theme.CreditEmerald
 import com.example.ui.theme.CreditEmeraldLight
@@ -107,6 +108,7 @@ import com.example.ui.theme.TrustBlue
 import com.example.ui.theme.TrustBlueDark
 import com.example.ui.theme.TrustBlueLight
 import com.example.ui.viewmodel.MainViewModel
+import com.example.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,17 +118,18 @@ fun SettingsScreen(
     appLockManager: AppLockManager,
     onBack: () -> Unit,
     onOpenDailyClosing: () -> Unit = {},
-    onOpenContactFeedback: () -> Unit = {}
+    onOpenContactFeedback: () -> Unit = {},
+    settingsViewModel: SettingsViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val profile by viewModel.merchantProfile.collectAsState()
-    val backupStatus by viewModel.backupStatus.collectAsState()
+    val profile by viewModel.merchantProfile.collectAsStateWithLifecycle()
+    val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
 
-    val isAppLockEnabled by appLockManager.isAppLockEnabled.collectAsState()
-    val isClosingNotifEnabled by viewModel.preferencesRepository.dailyClosingNotifEnabledFlow.collectAsState(initial = true)
-    val isAutoSyncEnabled by viewModel.preferencesRepository.autoCloudSyncEnabledFlow.collectAsState(initial = true)
-    val lastSyncTimestamp by viewModel.preferencesRepository.lastCloudSyncTimestampFlow.collectAsState(initial = 0L)
+    val isAppLockEnabled by appLockManager.isAppLockEnabled.collectAsStateWithLifecycle()
+    val isClosingNotifEnabled by viewModel.preferencesRepository.dailyClosingNotifEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
+    val isAutoSyncEnabled by viewModel.preferencesRepository.autoCloudSyncEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
+    val lastSyncTimestamp by viewModel.preferencesRepository.lastCloudSyncTimestampFlow.collectAsStateWithLifecycle(initialValue = 0L)
     val strings = LocalAppStrings.current
 
     var shopName by remember(profile.shopName) { mutableStateOf(profile.shopName) }
@@ -218,6 +221,154 @@ fun SettingsScreen(
                 },
                 onClick = onOpenContactFeedback
             )
+
+            // --- 0. APP LANGUAGE & GEMINI AI LOCALE PROMPT CARD ---
+            val languageState by settingsViewModel.languageSelection.state.collectAsStateWithLifecycle()
+            val localePromptConfig = remember(languageState.selectedLanguage.code) {
+                GeminiClient.getLocalePromptConfig(languageState.selectedLanguage.code)
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(SurfaceLevel2)
+                    .border(1.5.dp, TrustBlue.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(TrustBlue.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = languageState.selectedLanguage.scriptChar,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = TrustBlue
+                                )
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "ऐप भाषा व AI बोल (Language & AI Locale)",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                            )
+                            Text(
+                                text = "Gemini AI adapts dialect & accounting terms to your region",
+                                style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
+                            )
+                        }
+                    }
+                }
+
+                // Language Option Chips
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    languageState.availableLanguages.forEach { lang ->
+                        val isSelected = languageState.selectedLanguage.code == lang.code
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) TrustBlue else SurfaceLevel1)
+                                .border(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) TrustBlue else SurfaceOutline,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    settingsViewModel.languageSelection.selectLanguage(lang.code) {
+                                        viewModel.updateLanguage(lang.code)
+                                    }
+                                }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = lang.scriptChar,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else TrustBlue
+                                    )
+                                )
+                                Column {
+                                    Text(
+                                        text = lang.localName,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color.White else TextPrimary
+                                        )
+                                    )
+                                    Text(
+                                        text = lang.englishName,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.sp,
+                                            color = if (isSelected) Color.White.copy(alpha = 0.85f) else TextMuted
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Gemini Locale Context Banner
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = SurfaceLevel1
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = null,
+                                tint = CreditEmerald,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Gemini 3.5 Flash Active Locale: ${localePromptConfig.languageName}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = CreditEmerald
+                                )
+                            )
+                        }
+                        Text(
+                            text = "Greeting: \"${localePromptConfig.greeting}\" • Key Vernacular: ${localePromptConfig.vernacularKeywords.take(4).joinToString(", ")}",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        )
+                    }
+                }
+            }
 
             // --- 1. SECURITY & APP LOCK CARD ---
             Column(

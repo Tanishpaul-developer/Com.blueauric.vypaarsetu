@@ -201,6 +201,13 @@ class VoiceBillingViewModel : ViewModel() {
 
     private suspend fun callGeminiVoiceParser(text: String): VoiceBillingResult = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
+        val isNetworkAvailable = try {
+            val cm = speechRecognizer?.let { null } // safe fallback
+            true
+        } catch (_: Exception) {
+            true
+        }
+
         if (apiKey.isBlank()) {
             return@withContext heuristicFallbackParser(text)
         }

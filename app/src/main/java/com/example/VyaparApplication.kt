@@ -46,27 +46,26 @@ open class VyaparApplication : Application() {
             defaultHandler?.uncaughtException(thread, throwable)
         }
 
-        // Initialize Monetization SDKs safely on Application main thread
+        // 1. Initialize Google Analytics for Firebase
+        try {
+            com.example.analytics.AnalyticsManager.initialize(this)
+            Log.i(TAG, "✓ Google Analytics for Firebase initialized")
+        } catch (e: Exception) {
+            Log.w(TAG, "Firebase Analytics init note: ${e.message}")
+        }
+
+        // 2. Initialize Monetization SDKs safely on Application main thread
+        // InMobi is Primary; Start.io is Secondary Fallback (All Real Ads, Test Ads DISABLED)
         initMonetizationSdks()
     }
 
     /**
-     * Executes InMobi and Start.io SDK initialization on the main thread
-     * with production real ads enabled and test mode disabled.
+     * Executes InMobi (Primary) and Start.io (Secondary) SDK initialization on the main thread
+     * with production real ads enabled and test mode explicitly disabled.
      */
     private fun initMonetizationSdks() {
+        // 1. Initialize InMobi SDK (Primary Real Ads Network)
         try {
-            // 1. Initialize Start.io in Production Mode (Test Ads explicitly DISABLED)
-            StartAppSDK.init(this, AdSdkInitializer.STARTIO_APP_ID, false)
-            StartAppSDK.enableReturnAds(false)
-            StartAppSDK.setTestAdsEnabled(false)
-            Log.i(TAG, "✓ Start.io SDK initialized in Production Mode (Test Ads DISABLED, App ID: ${AdSdkInitializer.STARTIO_APP_ID})")
-        } catch (e: Exception) {
-            Log.e(TAG, "Start.io early init error: ${e.message}", e)
-        }
-
-        try {
-            // 2. Initialize InMobi SDK with verified Account ID and GDPR/CCPA compliance
             InMobiSdk.setLogLevel(InMobiSdk.LogLevel.NONE)
             InMobiSdk.setLocationWithCityStateCountry("Delhi", "Delhi", "India")
             val consentJson = JSONObject().apply {
@@ -82,7 +81,7 @@ open class VyaparApplication : Application() {
                 object : SdkInitializationListener {
                     override fun onInitializationComplete(error: java.lang.Error?) {
                         if (error == null) {
-                            Log.i(TAG, "✓ InMobi SDK initialized on Application start (Account ID: ${AdSdkInitializer.INMOBI_ACCOUNT_ID})")
+                            Log.i(TAG, "✓ InMobi SDK (Primary) initialized on Application start (Account ID: ${AdSdkInitializer.INMOBI_ACCOUNT_ID})")
                         } else {
                             Log.w(TAG, "InMobi SDK initialization completed with notice: ${error.message}")
                         }
@@ -91,6 +90,16 @@ open class VyaparApplication : Application() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "InMobi early init error: ${e.message}", e)
+        }
+
+        // 2. Initialize Start.io SDK in Production Mode (Secondary Fallback, Test Ads explicitly DISABLED)
+        try {
+            StartAppSDK.init(this, AdSdkInitializer.STARTIO_APP_ID, false)
+            StartAppSDK.enableReturnAds(false)
+            StartAppSDK.setTestAdsEnabled(false)
+            Log.i(TAG, "✓ Start.io SDK (Secondary) initialized in Production Mode (Test Ads DISABLED, App ID: ${AdSdkInitializer.STARTIO_APP_ID})")
+        } catch (e: Exception) {
+            Log.e(TAG, "Start.io early init error: ${e.message}", e)
         }
     }
 }
